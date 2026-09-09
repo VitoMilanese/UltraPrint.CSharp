@@ -3,6 +3,7 @@ using UltraPrint.Core.Models;
 using UltraPrint.Legacy.Data;
 using UltraPrint.Legacy.Layout;
 using UltraPrint.Legacy.Security;
+using UltraPrint.Legacy.Scripting;
 
 var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "TPMFAO19.ly");
 if (!File.Exists(fixture)) throw new FileNotFoundException("Compatibility fixture not copied to output.", fixture);
@@ -67,6 +68,7 @@ try
     TestRecordBinding(roundTrip, codec);
     TestManagedDataState(roundTrip, codec);
     TestOperatorDatabaseLocator(temp);
+    TestScriptCompatibility(temp);
 
     Console.WriteLine("UltraPrint compatibility tests passed.");
 }
@@ -145,6 +147,47 @@ static void TestOperatorDatabaseLocator(string temp)
 
     File.WriteAllText(candidates[0], "db");
     AssertEqual(candidates[0], LegacyOperatorDatabaseLocator.FindExisting(root)!, "operator DB Db folder takes precedence");
+}
+
+static void TestScriptCompatibility(string temp)
+{
+    AssertEqual(20, LegacyScriptContract.ObjectNames.Count, "recovered AddObjects name count");
+    AssertTrue(LegacyScriptContract.ObjectNames.Contains("Mainform"), "script Mainform object name");
+    AssertTrue(LegacyScriptContract.ObjectNames.Contains("Carta"), "script Carta object name");
+    AssertTrue(LegacyScriptContract.ObjectNames.Contains("ClipBoard"), "script ClipBoard object name");
+    AssertTrue(LegacyScriptContract.LifecycleEvents.SequenceEqual(new[] { "OnLoad", "Load", "Main", "Unload" }),
+        "recovered script lifecycle event names");
+
+    var vb6 = "Private Sub Form_Unload(Cancel)\r\n" +
+              "Dim Count as Integer\r\n" +
+              "Unload Me\r\n" +
+              "'Me.'Caption = \"Test\"\r\n" +
+              "End Sub\r\n";
+    var prepared = LegacyScriptCodePreprocessor.Prepare(vb6);
+    AssertTrue(!prepared.Contains("Private ", StringComparison.OrdinalIgnoreCase), "PreparaCodice removes Private");
+    AssertTrue(!prepared.Contains(" as Integer", StringComparison.OrdinalIgnoreCase), "PreparaCodice removes integer type clause");
+    AssertTrue(prepared.Contains("Sub Form_Unload()", StringComparison.OrdinalIgnoreCase), "PreparaCodice normalizes Form_Unload");
+    AssertTrue(prepared.Contains("Chiudimi", StringComparison.OrdinalIgnoreCase), "PreparaCodice rewrites Unload Me");
+    AssertTrue(prepared.Contains("Me.Caption", StringComparison.OrdinalIgnoreCase), "PreparaCodice restores commented Me member prefix");
+
+    var root = Path.Combine(temp, "script-contract");
+    var globalScriptDirectory = Path.Combine(root, "Script");
+    var appScriptDirectory = Path.Combine(root, "App", "BadgeApp", "Script");
+    Directory.CreateDirectory(globalScriptDirectory);
+    Directory.CreateDirectory(appScriptDirectory);
+    var globalScript = Path.Combine(globalScriptDirectory, "Form.VBS");
+    var appScript = Path.Combine(appScriptDirectory, "Form.VBS");
+    File.WriteAllText(globalScript, "Sub Load(): End Sub");
+    File.WriteAllText(appScript, "Sub Main(): End Sub");
+
+    var context = new LegacyScriptPathContext(root, "BadgeApp");
+    var candidates = LegacyScriptPathResolver.GetCandidates(context, "Form");
+    AssertEqual(globalScript, candidates[0], "global Script path candidate");
+    AssertTrue(candidates.Contains(appScript, StringComparer.OrdinalIgnoreCase), "application-scoped Script path candidate");
+    AssertEqual(globalScript, LegacyScriptPathResolver.FindFirstExisting(context, "Form")!, "global Script candidate precedence");
+    var discovered = LegacyScriptPathResolver.Discover(context);
+    AssertTrue(discovered.Contains(globalScript, StringComparer.OrdinalIgnoreCase), "global script discovery");
+    AssertTrue(discovered.Contains(appScript, StringComparer.OrdinalIgnoreCase), "application-scoped script discovery");
 }
 
 static void AssertTrue(bool condition, string name)
