@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 
 namespace UltraPrint.Core.Models;
 
@@ -24,6 +25,8 @@ public enum LayoutSide
 
 public sealed class LayoutField
 {
+    private readonly TextFieldSettings _text = new();
+
     [ReadOnly(true)]
     public int Index { get; set; }
 
@@ -54,8 +57,22 @@ public sealed class LayoutField
     public double HeightMm { get; set; }
     public int Level { get; set; }
 
-    [TypeConverter(typeof(ExpandableObjectConverter))]
-    public TextFieldSettings Text { get; } = new();
+    /// <summary>
+    /// The parent Text row is intentionally writable. PropertyGrid converts an inline string edit
+    /// into a temporary TextFieldSettings instance and this setter copies only Content, so editing
+    /// "Text" directly does not reset font, alignment, database binding or other child settings.
+    /// The row remains expandable for the detailed properties.
+    /// </summary>
+    [TypeConverter(typeof(TextFieldSettingsConverter))]
+    public TextFieldSettings Text
+    {
+        get => _text;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _text)) return;
+            _text.Content = value.Content;
+        }
+    }
 
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public AppearanceSettings Appearance { get; } = new();
@@ -79,7 +96,37 @@ public sealed class LayoutField
     }
 }
 
-[TypeConverter(typeof(ExpandableObjectConverter))]
+/// <summary>
+/// Keeps Text expandable while also allowing the parent PropertyGrid value cell to be edited as
+/// the field content. ConvertFrom creates only a carrier value; LayoutField.Text copies Content
+/// into the existing settings object so the nested style state is preserved.
+/// </summary>
+public sealed class TextFieldSettingsConverter : ExpandableObjectConverter
+{
+    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) =>
+        sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+
+    public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value) =>
+        value is string text
+            ? new TextFieldSettings { Content = text }
+            : base.ConvertFrom(context, culture, value);
+
+    public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) =>
+        destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
+
+    public override object? ConvertTo(
+        ITypeDescriptorContext? context,
+        CultureInfo? culture,
+        object? value,
+        Type destinationType)
+    {
+        if (destinationType == typeof(string) && value is TextFieldSettings settings)
+            return settings.Content;
+        return base.ConvertTo(context, culture, value, destinationType);
+    }
+}
+
+[TypeConverter(typeof(TextFieldSettingsConverter))]
 public sealed class TextFieldSettings
 {
     public string Content { get; set; } = string.Empty;
