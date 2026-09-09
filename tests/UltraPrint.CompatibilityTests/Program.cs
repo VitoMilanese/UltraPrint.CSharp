@@ -158,16 +158,18 @@ static void TestScriptCompatibility(string temp)
     AssertTrue(LegacyScriptContract.LifecycleEvents.SequenceEqual(new[] { "OnLoad", "Load", "Main", "Unload" }),
         "recovered script lifecycle event names");
 
+    // The native PreparaCodice search strings include leading spaces for these
+    // statement-level replacements, so the fixture deliberately preserves one.
     var vb6 = "Private Sub Form_Unload(Cancel)\r\n" +
               "Dim Count as Integer\r\n" +
-              "Unload Me\r\n" +
+              " Unload Me\r\n" +
               "'Me.'Caption = \"Test\"\r\n" +
               "End Sub\r\n";
     var prepared = LegacyScriptCodePreprocessor.Prepare(vb6);
     AssertTrue(!prepared.Contains("Private ", StringComparison.OrdinalIgnoreCase), "PreparaCodice removes Private");
     AssertTrue(!prepared.Contains(" as Integer", StringComparison.OrdinalIgnoreCase), "PreparaCodice removes integer type clause");
     AssertTrue(prepared.Contains("Sub Form_Unload()", StringComparison.OrdinalIgnoreCase), "PreparaCodice normalizes Form_Unload");
-    AssertTrue(prepared.Contains("Chiudimi", StringComparison.OrdinalIgnoreCase), "PreparaCodice rewrites Unload Me");
+    AssertTrue(prepared.Contains("Chiudimi", StringComparison.OrdinalIgnoreCase), "PreparaCodice rewrites native-spaced Unload Me");
     AssertTrue(prepared.Contains("Me.Caption", StringComparison.OrdinalIgnoreCase), "PreparaCodice restores commented Me member prefix");
 
     var root = Path.Combine(temp, "script-contract");
