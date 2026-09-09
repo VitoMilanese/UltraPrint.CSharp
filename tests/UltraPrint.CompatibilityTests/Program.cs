@@ -190,6 +190,23 @@ static void TestScriptCompatibility(string temp)
     var discovered = LegacyScriptPathResolver.Discover(context);
     AssertTrue(discovered.Contains(globalScript, StringComparer.OrdinalIgnoreCase), "global script discovery");
     AssertTrue(discovered.Contains(appScript, StringComparer.OrdinalIgnoreCase), "application-scoped script discovery");
+
+    var recordingEngine = new RecordingScriptEngine();
+    using (var session = new LegacyScriptSession(recordingEngine))
+    {
+        session.RegisterObject("Carta", new object());
+        session.RegisterObject("Fn", new object());
+        session.Load("Sub Load(): End Sub", "fixture.vbs", prepareLegacyCode: false);
+        AssertTrue(recordingEngine.Calls.SequenceEqual(new[]
+        {
+            "Reset",
+            "AddObject:Carta:True",
+            "AddObject:Fn:True",
+            "AddCode:fixture.vbs",
+        }), "managed session preserves AddObjects before AddProg/AddCode order");
+        session.Invoke("Load");
+        AssertEqual("Invoke:Load", recordingEngine.Calls[^1], "managed script event dispatch");
+    }
 }
 
 static void AssertTrue(bool condition, string name)
@@ -207,4 +224,26 @@ static void AssertNearly(double expected, double actual, double tolerance, strin
 {
     if (Math.Abs(expected - actual) > tolerance)
         throw new InvalidOperationException($"Assertion failed: {name}. Expected {expected}, got {actual}.");
+}
+
+sealed class RecordingScriptEngine : ILegacyScriptEngine
+{
+    public List<string> Calls { get; } = new();
+    public string Description => "Recording test engine";
+
+    public void Reset() => Calls.Add("Reset");
+
+    public void AddObject(string name, object value, bool addMembers = true) =>
+        Calls.Add($"AddObject:{name}:{addMembers}");
+
+    public void AddCode(string code, string? sourcePath = null) =>
+        Calls.Add($"AddCode:{sourcePath ?? "<none>"}");
+
+    public object? Invoke(string procedureName, params object?[] arguments)
+    {
+        Calls.Add($"Invoke:{procedureName}");
+        return null;
+    }
+
+    public void Dispose() => Calls.Add("Dispose");
 }
