@@ -13,7 +13,7 @@ Status values:
 
 | Original object/workflow | Recovered behavior | Status | Managed replacement / remaining work |
 | --- | --- | --- | --- |
-| `MainForm` | MDI shell, New/Open/Save/Save As, Print/Preview/Page Setup, database/devices/scripts, sequence, login/privileges, front/back, field/record management | **Partial** | Open/save, print/preview/page setup, layout properties, side/field commands, Database/Records workspace and Security/operator workflows exist. Devices/scripts/sequence and exact privilege command gating remain. |
+| `MainForm` | MDI shell, New/Open/Save/Save As, Print/Preview/Page Setup, database/devices/scripts, sequence, login/privileges, front/back, field/record management | **Partial** | Open/save, print/preview/page setup, layout properties, side/field commands, Database/Records workspace, Security/operator workflows and a legacy VBScript workspace exist. Devices/sequence, automatic script lifecycle integration and exact privilege command gating remain. |
 | `frmCarta` | Card editor: create/select fields, drag, measurements, rulers, front/back, photo, record-to-card, Campo.ini sync | **Partial** | Managed canvas, select/move/resize, mm geometry, grid/snap, insert/duplicate/delete, z-order, preview and runtime Record2Card binding exist. Full style/property byte mapping, tables, rulers and photo capture remain. |
 | `Dimensioni` | Card dimensions | **Implemented** | Width/height/DPI layout properties dialog. |
 | `frmPrinting` | Print progress/cancel shell | **Partial** | Standard Windows PrintDocument and record/batch paths exist; progress/cancel and device-specific pipeline remain. |
@@ -27,7 +27,7 @@ The supplied installer contains DAO 3.5/3.6 and Jet 3.5/4.0 components. Native s
 
 | Original object/workflow | Recovered behavior | Status | Remaining work |
 | --- | --- | --- | --- |
-| `Funzioni` | document CRUD, DB/report conversion, SQL, dataset access, variables, formatting, scripts, login/common utilities | **Partial** | Managed dataset open/query, Record2Card and operator-login paths now exist; document CRUD, formatting, variables and script engine remain. |
+| `Funzioni` | document CRUD, DB/report conversion, SQL, dataset access, variables, formatting, scripts, login/common utilities | **Partial** | Managed dataset open/query, Record2Card, operator-login and a conservative scripting compatibility boundary now exist; document CRUD, formatting, variables, complete `Interpretariga`/`AddProg` behavior and script object facades remain. |
 | `frmDatabase` | DB selection, tables/fields, SQL query/edit/save, print all | **Partial** | Database/Records workspace opens Access/FFM/DBF/Excel/CSV/text, lists tables, runs SELECT and action SQL, browses records and prints one/all. Exact legacy query/database metadata persistence and schema-design tabs remain. |
 | `FrmDati` | data loading/database creation | **Partial** | Data loading and record browsing exist. Database creation/import flow remains. |
 | `Tabella` | record/table display and photo handling | **Partial** | Managed record grid, first/previous/next/last navigation, binding, card preview and printing exist. Editing/write-back and photo acquisition remain. |
@@ -42,8 +42,8 @@ The supplied installer contains DAO 3.5/3.6 and Jet 3.5/4.0 components. Native s
 | Original object/workflow | Recovered behavior | Status | Remaining work |
 | --- | --- | --- | --- |
 | `frmText` | text/memo editor, find/link | **Missing** | Need dedicated text editor and native-compatible field-link editing. |
-| `frmCodice` | script/code tree and save | **Missing** | Need script editor. |
-| `Funzioni.Vbscript` / `AddProg` / `AddObjects` | layout script lifecycle including `Load` event | **Missing** | Need compatibility host/translator with clearly constrained execution. |
+| `frmCodice` | script/code tree, source editor, save and error-location UI | **Partial** | Managed **Tools -> Legacy VBScript...** workspace discovers/opens/edits/saves `.vbs`, previews recovered preprocessing, compiles and maps ScriptControl error line/column to the editor. Native tree organization, formatting and exact source-loading behavior remain. |
+| `Funzioni.Vbscript` / `AddProg` / `AddObjects` | layout script lifecycle, object injection and event dispatch including `Load` | **Partial** | All 20 native `AddObject` names, `OnLoad`/`Load`/`Main`/`Unload`, script-path conventions, the confirmed `PreparaCodice` subset and the shipped `MSScriptControl.ScriptControl` ProgID are recovered. Managed engine/session boundary and optional COM adapter exist. Exact `Interpretariga`, `AddProg` statement splitting, event arguments, managed object facades and automatic layout execution remain. |
 | `frmContatori` | counters, digits, create/delete/reset/update | **Missing** | Need persistent counter subsystem. |
 | `frmBarcode` | barcode type/size selection | **Missing** | Need barcode renderer and field type mapping. |
 
@@ -97,6 +97,7 @@ The original binary contains `Funzioni.CheckPassword`, `Funzioni.ChekPassword`, 
 | `Campo.ini` | **Partial/strong** | ANSI/order-preserving reader/writer and `[$]` current-value semantics recovered. More consumers still need implementation. |
 | `.ly` | **Partial/strong** | Dimensions, DPI and 64x264-byte field table partially decoded. Unknown bytes are preserved; insertion/duplication/deletion reuse raw templates. Global database/query and per-field binding offsets are deliberately not written until verified. |
 | `.ly.data.json` | **Managed compatibility state** | Non-destructive sidecar for database path/query/table and newly created field bindings. It exists specifically to avoid corrupting unknown legacy `.ly` bytes and can be migrated once native offsets are confirmed. |
+| `.vbs` / `Script` directories | **Partial** | Root/application script discovery, exact ScriptControl ProgID, 20 exposed object names, lifecycle event names and confirmed `PreparaCodice` replacements are recovered. Raw source is preserved by the editor. Automatic execution and complete object/event semantics remain disabled until validated. |
 | `UP.ini` | **Partial** | `/erasepw` `[Setup] Pw` compatibility implemented. Other settings remain. |
 | `Operatori.FFM` | **Partial/strong** | Recovered lookup order is `Db\Operatori.FFM` then root fallback. Existing files open through ACE16/ACE12/Jet4; `Operatore`, `Password`, `Livello` are required and only the native-confirmed `Privilegio LONG` / `Gruppo TEXT(50)` migrations are auto-added. Managed creation/CRUD/login exist, pending validation against a real legacy FFM. |
 | `Contatori.dat` | **Missing** | Supplied file is empty; counter persistence behavior must be recovered from code/runtime samples. |
