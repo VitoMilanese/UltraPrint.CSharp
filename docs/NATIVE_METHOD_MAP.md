@@ -36,9 +36,21 @@ Addresses are native entry VAs recovered from VB6 metadata, event-link thunks, p
 | Opendataset | 0x004A65C0 | 0x814 |
 | CheckPassword | 0x004AF750 | 0x824 |
 | GetVariabile | 0x004AFEF0 | 0x82C |
+| Interpretariga | 0x004B1DF0 | 0x840 |
+| PreparaCodice | 0x004B5800 | 0x844 |
 | AddProg | 0x004B6420 | 0x848 |
 | Vbscript | 0x004B7D00 | 0x84C |
 | Login | 0x004BDC40 | 0x89C |
+
+### Script lifecycle evidence
+
+The global layout lifecycle at `0x00601EA0` invokes `AddObjects`, then `AddProg`, then `Vbscript("Load")`, before `frmCarta.DisegnaCampi`.
+
+`AddObjects` performs twenty `ScriptControl.AddObject(name, object, True)` calls. The recovered names are `Me`, `Mainform`, `Preview`, `Db`, `Sequenza`, `Stampa`, `frmDatabase`, `Carta`, `Chip`, `Tabella`, `frmlogin`, `Fn`, `Funzioni`, `File`, `SmartDriver`, `Dispositivi`, `Printer`, `Screen`, `ClipBoard`, `App`.
+
+`PreparaCodice` repeatedly calls the recovered replacement helper and then `Interpretariga`. Directly visible transformations are documented in `SCRIPT_COMPATIBILITY.md`; `Interpretariga` remains incompletely decoded.
+
+`AddProg` references Script Control `ExecuteStatement`, `AddCode`, `Error`, `Description`, `Line` and `Column`, plus `frmCodice` RichTextBox selection APIs for locating script errors.
 
 ## frmCarta
 
