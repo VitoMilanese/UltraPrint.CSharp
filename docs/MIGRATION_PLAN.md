@@ -53,9 +53,11 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 
 ## Phase 4 — scripting, counters and barcode
 
-- [ ] recover script object model exposed by `Funzioni.AddObjects` / `AddProg`
-- [ ] implement constrained VBScript compatibility strategy and layout lifecycle events including `Load`
-- [ ] implement script editor (`frmCodice`)
+- [~] recover script object model exposed by `Funzioni.AddObjects` / `AddProg`: all 20 native `AddObject` names, lifecycle method addresses, ScriptControl ProgID, script-path convention and the confirmed `PreparaCodice` normalization subset are mapped; exact callable members behind each legacy object remain
+- [~] implement constrained VBScript compatibility strategy: `ILegacyScriptEngine`, explicit-execution session boundary, optional `MSScriptControl.ScriptControl` COM adapter, error line/column mapping and recovered `OnLoad` / `Load` / `Main` / `Unload` event names exist; automatic layout execution and event argument semantics remain deliberately disabled until proven
+- [~] implement script editor (`frmCodice`): managed **Tools -> Legacy VBScript...** workspace can discover/open/edit/save scripts, show prepared source, compile and invoke a selected lifecycle event; native code-tree formatting and complete AddProg behavior remain
+- [ ] completely recover `Interpretariga` and the exact `AddProg` top-level-statement/procedure loading algorithm
+- [ ] map the 20 exposed script objects to proven managed facade member contracts and validate with a real production `.vbs`/layout pair
 - [ ] implement counters (`frmContatori`, `Contatori.dat`)
 - [ ] implement barcode field/rendering workflow (`frmBarcode`)
 
