@@ -1,0 +1,67 @@
+CadBox.ocx VB6 native: code 0x11006280-0x1101EBC0, SubMain 0x00000000
+
+CadBox ProcCount=17 discovered=17 [positional native mapping]
+  0x11006290: Punto_Event2
+  0x110063D0: Punto_Event13
+  0x11006820: Punto_Event14
+  0x1100A4B0: Punto_Event15
+  0x1100ABF0: BoxOn
+  0x1100AF80: DrawRectangle
+  0x1100E670: Timer1_Event0
+  0x1100E880: UserControl_Event23
+  0x1100EB90: StepGrid
+  0x1100EC30: StepGrid
+  0x1100ED00: Tipo
+  0x1100EDA0: GetObject
+  0x1100EE10: Tipo
+  0x1100EF80: UserControl_Event33
+  0x1100F020: UserControl_Event32
+  0x1100F100: UserControl_Event24
+  0x1100F180: UserControl_Event31
+
+PropertyTool ProcCount=45 discovered=45 [positional native mapping]
+  0x1100F250: AddProprieta
+  0x1100F310: RemoveProprieta
+  0x1100F3E0: cbotext_Event0
+  0x1100F520: cbotext_Event1
+  0x1100F5C0: cbotext_Event5
+  0x11011800: cbotext_Event8
+  0x11012490: MSFlexGrid1_Event18
+  0x11012CF0: MSFlexGrid1_Event21
+  0x11012FE0: UserControl_Event23
+  0x11013070: UserControl_Event7
+  0x11013860: BackColor
+  0x110138D0: BackColor
+  0x11013970: Id
+  0x11013A10: Id
+  0x11013AE0: Table
+  0x11013B80: Table
+  0x11013C50: Databasename
+  0x11013CF0: Databasename
+  0x11013DC0: ForeColor
+  0x11013E30: ForeColor
+  0x11013ED0: Enabled
+  0x11013F70: Enabled
+  0x11014040: Font
+  0x110140D0: Font
+  0x110141A0: BackStyle
+  0x11014210: BackStyle
+  0x110142C0: BorderStyle
+  0x11014360: BorderStyle
+  0x11014430: Refresh
+  0x11014490: MSFlexGrid1_Event11
+  0x11014510: GetExtraProprierties
+  0x11014C90: SetMember
+  0x11017E20: SetExtraProprierties
+  0x11018650: UserControl_Event33
+  0x11018750: UserControl_Event32
+  0x11018B00: UserControl_Event24
+  0x11018BB0: UserControl_Event31
+  0x11018F90: Setup
+  0x110193B0: GetObject
+  0x11019420: ClearProprieta
+  0x11019570: GetProprieta
+  0x11019A10: SaveObject
+  0x1101BCB0: LoadObject
+  0x1101DB10: RefreshAll
+  0x1101DEE0: Loadproprieta

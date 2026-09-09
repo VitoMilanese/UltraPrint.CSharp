@@ -1,0 +1,604 @@
+UltraPrint.exe VB6 native: code 0x0048ABC0-0x006284E0, SubMain 0x005F7380
+
+cLogo ProcCount=17 discovered=11 [positional native mapping]
+  0x0048ABD0: Caption
+  0x0048AC50: Caption
+  0x0048ACE0: DrawingObject
+  0x0048AD50: StartColor
+  0x0048ADC0: StartColor
+  0x0048AEA0: EndColor
+  0x0048AF10: EndColor
+  0x0048AFF0: Draw
+  0x0048B800: DrawText
+  0x0048BF70: Class_Event0
+
+Chip ProcCount=3 discovered=3 [positional native mapping]
+  0x0048C010: Form_Load
+  0x0048C7C0: Form_Resize
+  0x0048D010: Form_Unload
+
+File ProcCount=40 discovered=40 [positional native mapping]
+  0x0048D200: Appendi
+  0x0048D330: Log
+  0x0048D850: Scrivi
+  0x0048D980: ApriFile
+  0x0048DDF0: GetIni
+  0x0048E510: GetFile
+  0x0048E9C0: Compatta
+  0x0048F2B0: LogErrori
+  0x0048F7D0: Doverb
+  0x00490290: StartDocument
+  0x00490370: SoloExt
+  0x00490540: SoloNomeFile
+  0x004909A0: SoloPath
+  0x00490BF0: WriteIni
+  0x004911F0: Esiste
+  0x00491470: Copia
+  0x00491560: Muovi
+  0x00491660: Rinomina
+  0x00491760: Elimina
+  0x00491810: Cd
+  0x004918E0: Md
+  0x004919B0: Directory
+  0x00491B10: Modifica
+  0x00491BF0: Stampa
+  0x00491CD0: Encrypt
+  0x00491DD0: Decrypt
+  0x00491ED0: Zip
+  0x00492170: Unzip
+  0x004924E0: GetParametri
+  0x00492810: Lunghezza
+  0x00492940: SetAttrib
+  0x00492A20: Archivia
+  0x004954F0: Estrai
+  0x00496390: Defrag
+  0x004976D0: CreaDir
+  0x00497C20: List2File
+  0x00497F40: File2List
+  0x004981D0: Form_Load
+  0x00498BA0: Form_Resize
+  0x00498E60: TreeView1_Event21
+
+Funzioni ProcCount=70 discovered=70 [positional native mapping]
+  0x004990E0: LoadCodicePerTipo
+  0x0049A650: NuovoDocumento
+  0x0049C680: IdDocumento
+  0x0049C8C0: AggiornaDocumento
+  0x0049CBF0: EliminaDocumento
+  0x0049D3A0: PathDocumento
+  0x0049D760: ImpostaDocumenti
+  0x0049E260: RecordToReport
+  0x0049EE60: AddObjects
+  0x004A0600: CaricaDocumento
+  0x004A06D0: Delay
+  0x004A0810: GetInside
+  0x004A0DE0: LoadGridSize
+  0x004A1480: SaveGridSize
+  0x004A19A0: Stampa
+  0x004A1D40: Zeri
+  0x004A1EB0: GlobalError
+  0x004A1FC0: ValutaSe
+  0x004A23D0: ExecuteSql
+  0x004A2EB0: Oggi
+  0x004A3110: Parola
+  0x004A35B0: Richiesta
+  0x004A36F0: Sostituisci
+  0x004A3A60: SaveFormPosition
+  0x004A3F50: SostituisciRiga
+  0x004A4A60: LoadFormPosition
+  0x004A5650: NomeWindow
+  0x004A5710: Capitalizzato
+  0x004A5870: StringSql
+  0x004A65C0: Opendataset
+  0x004A7A70: Attendere
+  0x004A7EC0: Tbl2Listview
+  0x004A9E10: Tbl2List
+  0x004AF750: CheckPassword
+  0x004AF820: ChekPassword
+  0x004AFEF0: GetVariabile
+  0x004B0220: SetVariabile
+  0x004B0560: IncVariabile
+  0x004B0940: FormattaReport
+  0x004B11D0: FormattaElenco
+  0x004B1DF0: Interpretariga
+  0x004B5800: PreparaCodice
+  0x004B6420: AddProg
+  0x004B7D00: Vbscript
+  0x004BA670: Trova
+  0x004BB660: GetComputerName
+  0x004BB7A0: GetUserName
+  0x004BB920: ToAscii
+  0x004BBBB0: ToHex
+  0x004BBEB0: NumToHex
+  0x004BBFC0: HexToNum
+  0x004BC0E0: StrSql
+  0x004BC480: Menu
+  0x004BC600: Formatta
+  0x004BC6C0: Salvavariabili
+  0x004BC900: Attiva
+  0x004BCDD0: Tasti
+  0x004BCFD0: DoEvent
+  0x004BD030: AttendiFinestra
+  0x004BD400: AttendiTermine
+  0x004BD770: CaricaStruttura
+  0x004BD830: Chiedi
+  0x004BD990: CreaDatabase
+  0x004BDC40: Login
+  0x004BDD20: Fine
+  0x004BDD80: T3D
+  0x004BF1C0: T3DRaise
+  0x004BF290: T3DInset
+  0x004BF360: T3DFlat
+  0x004BF430: AddParentesi
+
+Opzioni ProcCount=76 discovered=74 [leading named phantom slots (1) prevent safe positional mapping]
+  0x004C5650: Annulla_Event0
+  0x004C5720: Avanti_Event0
+  0x004C5CA0: Check1_Event0
+  0x004C5D40: cmd_Click
+  0x004C6230: cmdCancel_Click
+  0x004C6300: cmdOK_Click
+  0x004C63F0: Combo1_Event1
+  0x004C6490: Combo1_Event5
+  0x004C67E0: Command1_Event0
+  0x004CB4C0: Fine_Event0
+  0x004CBB40: Form_Activate
+  0x004CBC20: Form_KeyDown
+  0x004CC010: Form_Load
+  0x004CC0A0: Form_Resize
+  0x004CF6A0: Form_Unload
+  0x004CF7D0: Indietro_Event0
+  0x004CFCD0: Label1_Click
+  0x004CFD60: Label1_DblClick
+  0x004CFE00: List1_Event0
+  0x004CFEA0: List1_Event1
+  0x004CFF40: ListView1_Event19
+  0x004CFFE0: ListView1_Event20
+  0x004D0080: Memo_Event15
+  0x004D0120: Memo_Event16
+  0x004D0910: MSFlexGrid1_Event9
+  0x004D09B0: MSFlexGrid1_Event11
+  0x004D0A50: Option1_Event0
+  0x004D0AF0: Picture1_DblClick
+  0x004D0BA0: ProgressBar1_Event1
+  0x004D0C40: Resize_Event0
+  0x004D0F40: Tabulatore_Event9
+  0x004FE6E0: Text1_Event0
+  0x004FE7C0: Text1_Event16
+  0x004FED10: Text1_Event3
+  0x004FF220: Text1_Event5
+  0x004FF590: Text1_Event10
+  0x004FF900: Text1_Event15
+  0x00504AB0: Titolo_Event2
+  0x00504B20: TreeView1_Event20
+  0x005052C0: TreeView1_Event21
+  0x00505B90: TreeView1_Event13
+  0x00505C40: Uscita_Event0
+
+FormQBE ProcCount=7 discovered=7 [positional native mapping]
+  0x00508510: Annulla_Event0
+  0x00508660: ComboTpric_Event1
+  0x00508930: Form_Activate
+  0x00508A30: Form_Load
+  0x0050D2C0: Form_Resize
+  0x0050D9E0: Ok_Event0
+  0x00510B20: ParametroSql
+
+smartDriver ProcCount=20 discovered=20 [positional native mapping]
+  0x005114A0: EncodeMagStripeWithApi
+  0x00511AD0: ChangeErrorReporting_Event0
+  0x00511B50: CustomMSEncodeAndPrint_Event0
+  0x00511C60: GetActiveJobId_Event0
+  0x00511D90: GetHelpFileName_Event0
+  0x00511EB0: GetMagstripeHeadType_Event0
+  0x00511FD0: GetPrinterAPIVersion_Event0
+  0x00512150: GetPrinterError_Event0
+  0x00512270: GetPrinterModelName_Event0
+  0x00512390: GetPrinterSerialNumber_Event0
+  0x005124B0: OnInitSmartCard_Event0
+  0x00512520: MagstripeReadEncodePrint_Event0
+  0x00512630: MSEncodeAndPrint_Event0
+  0x00512740: MSEncodeWithFont_Event0
+  0x00512820: PrintWithCardStatus_Event0
+  0x00512890: ReadMagstripe_Event0
+  0x00512B30: RunCleaningCard_Event0
+  0x00512BA0: RunFirmwareUpdate_Event0
+  0x00512C10: TogglePollingState_Event0
+  0x00512D20: StampaRecord
+
+Tabella ProcCount=15 discovered=15 [positional native mapping]
+  0x00515790: cmdFoto_Click
+  0x00515910: datPrimaryRS_Event0
+  0x00515980: datPrimaryRS_Event1
+  0x00516330: datPrimaryRS_Event2
+  0x00516550: Form_Activate
+  0x00516C50: Form_Load
+  0x00517070: Form_Resize
+  0x0051C3B0: Form_Unload
+  0x0051C820: Carica
+  0x005206C0: Toolbar1_Event9
+  0x00522B40: txtFields_Event3
+  0x00523850: Trovarecord
+  0x00526EB0: VScroll1_Change
+  0x00526F50: VScroll1_Scroll
+
+frmAbout ProcCount=8 discovered=5 [positional native mapping]
+  0x00526FF0: Form_Load
+  0x00527490: cmdSysInfo_Click
+  0x00527520: cmdOK_Click
+  0x005275F0: StartSysInfo
+  0x005278C0: GetKeyValue
+
+frmApri ProcCount=4 discovered=4 [positional native mapping]
+  0x00527CF0: Form_Load
+  0x00527E30: Form_Resize
+  0x00528110: Form_Unload
+  0x005281F0: ListaJob_Event0
+
+frmBarcode ProcCount=5 discovered=5 [positional native mapping]
+  0x00528D20: Command1_Event0
+  0x00529B70: Form_Load
+  0x0052A640: ListaBarcode_Event0
+  0x0052AD30: listadimensione_Event0
+  0x0052AE60: txtDimensioni_Event0
+
+frmCapture ProcCount=11 discovered=11 [positional native mapping]
+  0x0052AFA0: btnCattura_Event0
+  0x0052B280: btnEsci_Event0
+  0x0052B350: Form_Load
+  0x0052B650: Form_Unload
+  0x0052B6E0: mnuCaps_Click
+  0x0052B750: mnuCompress_Click
+  0x0052B7D0: mnuDisplay_Click
+  0x0052B850: mnuEsci_Click
+  0x0052B920: mnuFormat_Click
+  0x0052BAA0: mnuSource_Click
+
+frmCarta ProcCount=41 discovered=41 [positional native mapping]
+  0x0052BB40: Marcatutti
+  0x0052CC50: SelectField
+  0x0052D890: CadBox1_Event10
+  0x0052E220: CadBox1_Event11
+  0x0052E5D0: NuovoCampo
+  0x00530BF0: cmdClick_Click
+  0x00530D80: cmdscreen_Click
+  0x00531060: Form_KeyDown
+  0x00531C30: Form_Load
+  0x005334D0: Form_Resize
+  0x005360F0: Form_Unload
+  0x005366E0: HScroll1_Change
+  0x005367A0: HScroll1_Scroll
+  0x00536860: Label1_DblClick
+  0x00536A40: Label1_DragDrop
+  0x00537090: Label1_MouseDown
+  0x00537160: Label1_MouseMove
+  0x00538AD0: Label1_MouseUp
+  0x00539190: LblbandaMagnetica_Click
+  0x005392D0: lblChip_Click
+  0x00539410: Picture1_DragDrop
+  0x00539CB0: Picture1_DragOver
+  0x0053A1C0: Picture1_MouseMove
+  0x0053A400: Picture1_MouseUp
+  0x0053A670: LabelToCampo
+  0x0053BA20: CampoToLabel
+  0x0053D790: CampoToIni
+  0x0053F7E0: IniToCampo
+  0x00541FB0: DisegnaCampi
+  0x00549930: AggiornaMisure
+  0x0054B050: SetupCampo
+  0x0054E660: SetButton
+  0x0054EA20: DisegnaRighello
+  0x00550940: Toolbar1_Event9
+  0x00550A30: AggiornaMarcatori
+  0x00551B20: FaiFoto
+  0x005534A0: AggiornaBottoni
+  0x00553FA0: Record2Card
+  0x00556910: Toolbar2_Event9
+  0x00556A00: VScroll1_Change
+  0x00556AC0: VScroll1_Scroll
+
+frmCodice ProcCount=5 discovered=5 [positional native mapping]
+  0x00556B80: Savefile
+  0x00556D30: Form_Load
+  0x0055B240: Form_Resize
+  0x0055B510: Form_Unload
+  0x0055B700: TreeView1_Event13
+
+frmContatori ProcCount=8 discovered=8 [positional native mapping]
+  0x0055B9F0: cbocifre_Event1
+  0x0055BBA0: Check1_Event0
+  0x0055BD40: CmdElimina_Click
+  0x0055BF30: cmdNuovo_Click
+  0x0055C4C0: Form_Load
+  0x0055CC30: ListaContatori_Event0
+  0x0055D100: Ok_Event0
+  0x0055D1E0: txtValore_Event0
+
+frmDatabase ProcCount=20 discovered=20 [positional native mapping]
+  0x0055D390: cmdFileDb_Click
+  0x0055E1F0: cmdQuery_Click
+  0x00560990: cmdSalva_Click
+  0x005610A0: cmsSql_Event0
+  0x00561130: ComboCampi_Event18
+  0x00561BE0: comboTabelle_Event20
+  0x00565240: Command1_Event0
+  0x00565310: Command2_Event0
+  0x00565400: DBGrid1_Event10
+  0x005659D0: Form_Load
+  0x005673B0: Form_Resize
+  0x00568260: RiempiTabelle
+  0x00569810: Form_Unload
+  0x0056A950: Pulsante_Event0
+  0x0056AC00: StampaTutti_Event0
+  0x0056DF10: TabStrip1_Event9
+  0x0056E130: txtSql_DblClick, txtSql_Event16
+  0x0056E4A0: NometipoCampo
+
+FrmDati ProcCount=7 discovered=7 [positional native mapping]
+  0x0056E740: Carica
+  0x00571180: CreaDatabase
+  0x00571260: Form_Load
+  0x00571C10: Form_Resize
+  0x00574EC0: Form_Unload
+  0x00574FA0: Toolbar1_Event9
+
+frmDispositivi ProcCount=15 discovered=15 [positional native mapping]
+  0x00575DA0: cboPrinter_Click, cboPrinter_Event1
+  0x00577680: Cmd_Click, cmd_Click
+  0x00577870: Comando
+  0x00577CA0: cmdAggiungi_Click
+  0x005783A0: cmdApply_Click
+  0x005784A0: cmdCancel_Click
+  0x00578570: cmdEditScript_Click
+  0x00578680: cmdGeneraScript_Click
+  0x00579F20: cmdOK_Click
+  0x0057AA90: cmdProprieta_Click
+  0x0057ACC0: cmdRimuovi_Click
+  0x0057AEF0: Command3_Event0
+  0x0057B030: Form_KeyDown
+  0x0057B3B0: Form_Load
+  0x0057C190: tbsOptions_Click, tbsOptions_Event9
+
+frmImg ProcCount=24 discovered=24 [positional native mapping]
+  0x0057C5D0: cmdDimensioni_Click
+  0x0057C6E0: Contrasto_Event16
+  0x0057C810: Drive1_Event0
+  0x0057CA20: File1_Event0
+  0x0057CBF0: Form_Activate
+  0x0057D020: Form_KeyPress
+  0x0057D3F0: Form_Load
+  0x0057DF30: Form_Resize
+  0x0057ED10: DblClick_Lead1
+  0x0057F230: LEAD1_Event10
+  0x0057F310: LEAD1_Event14
+  0x0057F6E0: LEAD1_Event15
+  0x00580630: LEAD1_Event16
+  0x005806A0: LEAD1_Event33
+  0x005807D0: Luminosità_Event16
+  0x00580900: Toolbar1_Event9
+  0x00585A00: ScansioneLead
+  0x00586200: Scansione
+  0x005869D0: Dir1_Event0
+  0x00586B00: SetRectangle
+  0x00587620: SettaColori
+  0x00587A10: CaricaFile
+  0x00587F30: TestZoom
+  0x0058A660: Makezoom
+
+frmJob ProcCount=14 discovered=14 [positional native mapping]
+  0x0058AAF0: CmdElimina_Click
+  0x0058AFF0: cmdNuovo_Click
+  0x0058B910: Command1_Event0
+  0x0058B9A0: Command2_Event0
+  0x0058BA10: Form_Activate
+  0x0058BC60: Form_Load
+  0x0058C140: Form_MouseMove
+  0x0058C240: Form_Unload
+  0x0058C2E0: Label1_Click
+  0x0058C410: Label1_MouseMove
+  0x0058C4D0: Label2_Click
+  0x0058C7A0: Label2_MouseMove
+  0x0058C860: ListaLayout_Event0
+  0x0058D550: ListaLayout_Event1
+
+frmLic ProcCount=19 discovered=19 [positional native mapping]
+  0x0058E520: Firma
+  0x0058EE80: ImpostaVariabili
+  0x0058F8F0: RegistraLicenza
+  0x00590510: TrovaeVerificaLicenza
+  0x00590BB0: VerificaLicenza
+  0x00594F60: GetmachineInfo
+  0x005959A0: ShowDriveInfo
+  0x00595F70: VerificaStringaLicenza
+  0x00597A40: Command1_Event0
+  0x00597AC0: Command2_Click, Command2_Event0
+  0x00597B50: Command3_Event0
+  0x00597C70: Form_Load
+  0x00597EC0: Form_OLEDragDrop
+  0x00597F30: Form_Unload
+  0x00597FA0: ScriviFileLicenza
+  0x00598410: GeneraRichiestaLicenza
+  0x00598BC0: GetHardDisk
+  0x00598D40: GetCompanyName
+  0x00598F00: GetWinSernumber
+
+frmLogin ProcCount=4 discovered=4 [positional native mapping]
+  0x005990C0: cmdCancel_Click
+  0x00599200: cmdOK_Click
+  0x0059B6E0: Form_Activate
+  0x0059B9E0: Form_Load
+
+MainForm ProcCount=71 discovered=69 [positional native mapping]
+  0x0059C7A0: MDIForm_Load
+  0x0059F7D0: MDIForm_Resize
+  0x0059FDE0: MDIForm_Unload
+  0x005A01C0: tbToolBar_ButtonClick
+  0x005AC810: mnuBandaMagnetica_Click
+  0x005ACA70: mnuConfiguraDispositivi_Click
+  0x005ACB60: mnuContatori_Click
+  0x005ACC50: mnuDatabase_Click
+  0x005ACD40: mnuFileClose_Click
+  0x005ACF60: mnuHelpAbout_Click
+  0x005AD050: mnuHelpSearchForHelpOn_Click
+  0x005AD620: mnuHelpContents_Click
+  0x005ADBF0: mnuImportaLayout_Click
+  0x005B0450: mnuImpostaPassword_Click
+  0x005B0940: MnuLogin_Click, mnuLogin_Click
+  0x005B0AF0: mnuModuloChip_Click
+  0x005B0D50: mnuMostraBanda_Click
+  0x005B0E80: mnuPrivilegi_Click
+  0x005B0F70: mnuRegistra_Click
+  0x005B1250: mnuScript_Click
+  0x005B14B0: mnuSequenzaPagine_Click
+  0x005B1620: mnuVisualizzaPosizioneBanda_Click
+  0x005B1770: mnuVisualizzaPosizioneChip_Click
+  0x005B18C0: mnuWindowArrangeIcons_Click
+  0x005B1960: mnuWindowTileVertical_Click
+  0x005B1A00: mnuWindowTileHorizontal_Click
+  0x005B1AA0: mnuWindowCascade_Click
+  0x005B2250: mnuViewOptions_Click
+  0x005B22E0: mnuViewRefresh_Click
+  0x005B23F0: mnuViewStatusBar_Click
+  0x005B25A0: mnuViewToolbar_Click
+  0x005B2750: mnuEditPasteSpecial_Click
+  0x005B2860: mnuFileExit_Click
+  0x005B2930: mnuFileSend_Click
+  0x005B2A40: mnuFilePrint_Click
+  0x005B3830: StampaRecord
+  0x005B4120: mnuFilePrintPreview_Click
+  0x005B5320: mnuFilePageSetup_Click
+  0x005B54A0: mnuFileProperties_Click
+  0x005B5650: CaricaSfondo
+  0x005B5D90: mnuFileSaveAs_Click
+  0x005B6360: mnuFileSave_Click
+  0x005B7550: mnuFileOpen_Click
+  0x005B8420: mnuFileNew_Click
+  0x005B8490: SetButton
+  0x005B8850: SetCoordinate
+  0x005B89D0: Toolbar1_Event9
+  0x005B8B50: AdattaCarta
+  0x005B9150: PrinterEscape
+  0x005B9450: Termina
+  0x005B9AB0: PuoFare
+  0x005BA8B0: SetPrivilegi
+  0x005BC580: GestioneRecord
+  0x005BDF00: GestioneSequenza
+  0x005BECE0: GestioneLato
+  0x005BFDB0: GestioneCampo
+  0x005BFE30: VersioneDemo
+
+frmMostraBanda ProcCount=3 discovered=3 [positional native mapping]
+  0x005BFF30: Form_Load
+  0x005C00C0: Form_Resize
+  0x005C0390: Form_Unload
+
+frmPassword ProcCount=3 discovered=3 [positional native mapping]
+  0x005C05B0: Command1_Event0
+  0x005C0860: Form_Load
+
+frmPrinting ProcCount=3 discovered=3 [positional native mapping]
+  0x005C0A10: Command1_Event0
+  0x005C0BE0: Form_Load
+  0x005C0E20: Form_Unload
+
+frmPrivilegi ProcCount=7 discovered=7 [positional native mapping]
+  0x005C0FD0: cboOperatori_Event1
+  0x005C1E60: Command1_Event0
+  0x005C1F50: Command2_Event0
+  0x005C2020: Command3_Event0
+  0x005C2350: Command4_Event0
+  0x005C27E0: Command5_Event0
+  0x005C3080: Form_Load
+
+Sequenza ProcCount=37 discovered=37 [positional native mapping]
+  0x005C3590: Pescarecord
+  0x005C5250: PosizionaPagina
+  0x005C5A50: cboDimensioni_Click, cboDimensioni_Event1
+  0x005C6220: cmdAnnulla_Click
+  0x005C6590: cmdImposta_Click
+  0x005CCA00: cmdPosiziona_Click
+  0x005CCC50: cmdSalva_Click
+  0x005CCD10: cmdSeleziona_Click
+  0x005CFE60: cmdStop_Click
+  0x005D02D0: Colonne_Change, Colonne_Event0
+  0x005D0360: Form_Load
+  0x005D2CA0: FoglioLandscape_Click, FoglioLandscape_Event0
+  0x005D2D40: Form_Resize
+  0x005D3530: Form_Unload
+  0x005D3900: Fronte_Click, Fronte_Event0
+  0x005D3990: MargineAlto_Change, MargineAlto_Event0
+  0x005D3A20: MargineDestro_Change, MargineDestro_Event0
+  0x005D3AB0: MSFlexGrid1_Click, MSFlexGrid1_Event9
+  0x005D4250: MSFlexGrid1_DblClick, MSFlexGrid1_Event11
+  0x005D4530: Orizzontale_Click, Orizzontale_Event0
+  0x005D45C0: PageDn_Click, PageDn_Event0
+  0x005D48B0: Pagina_Change, Pagina_Event0
+  0x005D4C40: PaginaSingola_Click, PaginaSingola_Event0
+  0x005D4CD0: PassoOrizzontale_Change, PassoOrizzontale_Event0
+  0x005D4D60: PassoVerticale_Change, PassoVerticale_Event0
+  0x005D4DF0: FoglioPortrait_Click, FoglioPortrait_Event0
+  0x005D4EB0: Pausa_Click, Pausa_Event0
+  0x005D5370: pgeUp_Click, pgeUp_Event0
+  0x005D56F0: Retro_Click, Retro_Event0
+  0x005D5780: Righe_Change, Righe_Event0
+  0x005D5810: ScriviSetup
+  0x005D65B0: LeggiSetup
+  0x005D7CE0: StampaPagina_Click, StampaPagina_Event0
+  0x005DD420: StampaTutte_Click, StampaTutte_Event0
+  0x005DDF40: TabStrip1_Click, TabStrip1_Event9
+  0x005DE4C0: Taglio_Click, Taglio_Event0
+  0x005DE550: Verticale_Click, Verticale_Event0
+
+frmSplash ProcCount=2 discovered=2 [positional native mapping]
+  0x005DE5E0: Form_Load
+
+frmTabelle ProcCount=15 discovered=15 [positional native mapping]
+  0x005DEC40: cbotabelle_Event1
+  0x005E1750: cbotabelle_Event8
+  0x005E18C0: cbotipo_Event1
+  0x005E1A70: cmdCreaTabella_Click
+  0x005E1FC0: ComboCampi_Event19
+  0x005E2440: AzzeraCampo
+  0x005E2570: Command1_Event0
+  0x005E2C70: Command2_Event0
+  0x005E3200: Command3_Event0
+  0x005E3AC0: RiempiTabelle
+  0x005E4110: AddParentesi
+  0x005E45A0: NometipoCampo
+  0x005E4840: Command4_Event0
+  0x005E4910: Form_Load
+  0x005E4C00: txtDb_Event5
+
+frmText ProcCount=12 discovered=12 [positional native mapping]
+  0x005E5530: cmdTrova_Click
+  0x005E57B0: Collega_Event0
+  0x005E5CA0: Command1_Event0
+  0x005E5E30: Command2_Event0
+  0x005E5FD0: Chiedi
+  0x005E6520: ChiediMemo
+  0x005E7000: MostraMemo
+  0x005E78B0: Form_Activate
+  0x005E7970: Form_Load
+  0x005E7A10: Text1_Event0
+  0x005E7D60: Text1_Event3
+  0x005E7ED0: Text1_Event5
+
+frmTracce ProcCount=5 discovered=5 [positional native mapping]
+  0x005E83E0: Form_Load
+  0x005E87C0: Form_Unload
+  0x005E8A50: Ok_Event0
+  0x005E8B60: Traccia_Event0
+  0x005E8DC0: Traccia_Event1
+
+frmWait ProcCount=2 discovered=2 [positional native mapping]
+  0x005E9050: Command1_Event0
+  0x005E9130: Form_Load
+
+frmPrinter ProcCount=2 discovered=2 [positional native mapping]
+  0x00627AA0: Form_Click
+  0x00627B70: Form_Unload
+
+Dimensioni ProcCount=3 discovered=3 [positional native mapping]
+  0x00627C60: Command1_Event0
+  0x00627F90: Command2_Event0
+  0x00628250: Form_Load
