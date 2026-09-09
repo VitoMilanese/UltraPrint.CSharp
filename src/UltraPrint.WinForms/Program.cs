@@ -12,6 +12,7 @@ internal static class Program
         var mainForm = new MainForm(options);
         DatabaseWorkspaceIntegration.Attach(mainForm);
         SecurityIntegration.Attach(mainForm);
+        ScriptIntegration.Attach(mainForm);
         Application.Run(mainForm);
     }
 }
