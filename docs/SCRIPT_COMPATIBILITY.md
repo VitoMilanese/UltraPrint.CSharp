@@ -73,13 +73,33 @@ Native `Funzioni.PreparaCodice` repeatedly calls the recovered string replacemen
 - remove `Private ` and `Public `
 - remove VB6 type suffixes `As Integer`, `Long`, `Variant`, `Date`, `Double`, `Currency`, `Boolean`, `Object`, `Any`
 - remove `As MSComctlLib.Node` and `As MSComctlLib.ListItem`
-- `Form_Unload(Cancel)` -> `Form_Unload()`
-- `Unload Me` -> `Chiudimi`
+- ` Form_Unload(Cancel)` -> ` Form_Unload()`
+- ` Unload Me` -> ` Chiudimi`
 - `'Me.'` -> `Me.`
 - `'Fn.'` -> `Fn.`
 - remove the literal marker `'-'`
 
+The leading spaces shown above are part of the native search literals. The managed compatibility test therefore preserves that spacing rather than silently broadening the rule.
+
 `PreparaCodice` then calls `Interpretariga`. Those additional transformations are not fully decoded yet, so the managed preprocessor deliberately labels itself as a confirmed subset rather than claiming perfect source translation.
+
+### `Interpretariga` token evidence
+
+The full native method spans `0x004B1DF0` to `0x004B57E9` and returns through a Variant-style output slot. Direct BSTR references inside it expose the following parser tokens:
+
+- `@(`
+- `$(`
+- `?(`
+- `@GETFILE(`
+- `@DIRECTORY(`
+- `@COMPUTER(`
+- closing `)`
+- separators `,;` and `;,`
+- path/config fragments `.`, `\`, `.Ini`, `\App\`, `$`
+
+The method calls recovered helpers including `GetInside`, `Parola`, `GetVariabile`, `SetVariabile`, `Sostituisci`, `File.GetIni` and `File.WriteIni`. The `@GETFILE` / `@DIRECTORY` / `@COMPUTER` branches are additionally guarded by the method's second Boolean-like argument. These facts prove that `Interpretariga` is more than cosmetic VB6 syntax stripping: it expands/interprets UltraPrint-specific script/config macros.
+
+The exact input grammar and output/side effects for each token are **not** yet claimed. No managed macro expansion is enabled until the surrounding branches are decoded well enough to avoid changing production script meaning.
 
 ### `AddProg`
 
@@ -101,9 +121,9 @@ The current branch adds:
 - `LegacyScriptContract` with the recovered object and lifecycle names;
 - `LegacyScriptPathResolver` for the confirmed global/application script-directory convention;
 - `LegacyScriptCodePreprocessor` containing only directly observed transformations;
-- `ILegacyScriptEngine` / `LegacyScriptSession` as the managed execution boundary;
+- `ILegacyScriptEngine` / `LegacyScriptSession` as the managed execution boundary, with registered objects re-injected after reset and before code loading to preserve `AddObjects -> AddProg` ordering;
 - optional `MsScriptControlEngine`, using the exact legacy `MSScriptControl.ScriptControl` COM ProgID when registered;
-- a WinForms **Tools -> Legacy VBScript...** workspace with discovery, raw source editing, save/save-as, prepared-code preview, compile and explicit lifecycle invocation;
+- a WinForms **Tools -> Legacy VBScript...** workspace with discovery, source editing, save/save-as, prepared-code preview, compile and explicit lifecycle invocation;
 - Script Control error description/line/column mapped back to the editor caret.
 
 Normal UltraPrint functionality does **not** depend on `MSSCRIPT.OCX`. If the COM component is absent or registered only for the other process architecture, the script editor and recovery tools still work and report the engine as unavailable.
@@ -118,7 +138,7 @@ The twenty `AddObjects` names are displayed in the workspace, but managed facade
 
 ## Remaining work
 
-1. Recover `Interpretariga` completely.
+1. Recover `Interpretariga` completely, including the exact `@(` / `$(` / `?(` and `@GETFILE` / `@DIRECTORY` / `@COMPUTER` macro semantics.
 2. Finish the exact `AddProg` top-level statement / procedure-block loading algorithm.
 3. Recover `Vbscript` argument mapping and event-name normalization for event families beyond the confirmed lifecycle names.
 4. Map each of the twenty `AddObjects` names to the exact callable members actually used by production scripts.
