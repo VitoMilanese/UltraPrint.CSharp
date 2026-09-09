@@ -172,8 +172,8 @@ public sealed class MsScriptControlEngine : ILegacyScriptEngine
 
     private LegacyScriptException CreateScriptException(Exception exception)
     {
-        var root = exception is TargetInvocationException { InnerException: not null } tie
-            ? tie.InnerException
+        Exception root = exception is TargetInvocationException { InnerException: not null } tie
+            ? tie.InnerException!
             : exception;
 
         var description = root.Message;
