@@ -69,7 +69,20 @@ Implemented operator/security compatibility layer:
 
 Exact privilege-to-command gating is deliberately not guessed yet. The original binary contains `MainForm.PuoFare` and `MainForm.SetPrivilegi`, but a real legacy `Operatori.FFM`/runtime comparison is still required to prove the meaning of `Livello`, `Privilegio`, password storage/comparison, and when login is mandatory. See [`docs/OPERATOR_COMPATIBILITY.md`](docs/OPERATOR_COMPATIBILITY.md).
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, VBScript lifecycle, counters/barcodes, image acquisition/editing, `Sequenza` sheet imposition, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
+Implemented scripting compatibility foundation:
+
+- Recovered the original `Funzioni.AddObjects -> AddProg -> Vbscript("Load")` layout-script lifecycle.
+- Recovered all 20 names passed to `ScriptControl.AddObject`, including `Mainform`, `Carta`, `Tabella`, `Fn`, `Funzioni`, `File`, `Printer`, `Screen`, `ClipBoard` and `App`.
+- Recovered the shipped engine ProgID: `MSScriptControl.ScriptControl` from `MSSCRIPT.OCX`.
+- Recovered the lifecycle names `OnLoad`, `Load`, `Main` and `Unload`.
+- Recovered the root/application `Script\*.VBS` path convention and a directly observed subset of native `PreparaCodice` source normalization.
+- Added a managed scripting boundary plus an optional COM adapter for the original Script Control when it is installed/registered for the process architecture.
+- Added **Tools -> Legacy VBScript...** with script discovery, open/edit/save, prepared-source preview, compile, lifecycle-event invocation and ScriptControl line/column diagnostics.
+- Legacy script execution is disabled until explicitly enabled for the current editor session; opening a layout does not silently execute arbitrary `.vbs` code.
+
+This scripting layer is intentionally partial. The exact `Interpretariga` transformations, `AddProg` top-level statement splitting, event argument mapping and callable members behind the 20 injected UltraPrint objects are still being recovered, so automatic layout script execution remains disabled. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md).
+
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, complete VBScript object/event compatibility, counters/barcodes, image acquisition/editing, `Sequenza` sheet imposition, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -87,7 +100,7 @@ Compatibility smoke tests:
 dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.CompatibilityTests.csproj -c Release
 ```
 
-## Try the editor, records and security
+## Try the editor, records, security and scripts
 
 1. Build and run `UltraPrint.WinForms`.
 2. Use **File -> Open layout (.ly)...** and open `samples\legacy\TPMFAO19\TPMFAO19.ly` or a real layout from an original UltraPrint `LY` directory.
@@ -97,7 +110,8 @@ dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.Compatibilit
 6. Open a table or run SQL, bind card fields to database columns, and navigate records while watching the card preview update.
 7. Print/preview the current record or all loaded records.
 8. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
-9. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
+9. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered.
+10. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
 
 ## CLI
 
@@ -112,4 +126,4 @@ dotnet run --project tools/UltraPrint.RecoveryCli -- startup-plan "C:\Program Fi
 
 Only behavior proven from binary metadata/native flow or real legacy data is treated as a confirmed compatibility contract. Unknown `.ly` bytes remain preserved rather than guessed. A workflow is marked complete only when it actually works against legacy inputs; placeholder menu items do not count.
 
-See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md` and `docs/OPERATOR_COMPATIBILITY.md` for the recovered structures and confidence level.
+See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md` and `docs/SCRIPT_COMPATIBILITY.md` for the recovered structures and confidence level.
