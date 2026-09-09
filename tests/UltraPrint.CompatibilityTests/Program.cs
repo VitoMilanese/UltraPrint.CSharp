@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Data;
 using UltraPrint.Core.Models;
 using UltraPrint.Legacy.Data;
@@ -64,6 +65,8 @@ try
     var deletedReload = codec.Load(deletedFile);
     AssertEqual(11, deletedReload.Fields.Count, "deleted field does not reappear after save/reload");
 
+    TestInlineTextEditing();
+    TestNewLayoutCreation(temp, codec);
     TestDelimitedDataSource(temp);
     TestRecordBinding(roundTrip, codec);
     TestManagedDataState(roundTrip, codec);
@@ -80,6 +83,55 @@ finally
 {
     try { Directory.Delete(temp, recursive: true); }
     catch { }
+}
+
+static void TestInlineTextEditing()
+{
+    var field = new LayoutField();
+    field.Text.Content = "Before";
+    field.Text.FontName = "Gill Sans MT";
+    field.Text.FontSize = 7;
+    field.Text.DatabaseField = "%SALE_DEVICE%";
+
+    var converter = TypeDescriptor.GetConverter(typeof(TextFieldSettings));
+    AssertTrue(converter.CanConvertFrom(typeof(string)), "Text parent PropertyGrid converter accepts inline strings");
+    var edited = converter.ConvertFromInvariantString("After") as TextFieldSettings
+                 ?? throw new InvalidOperationException("Text converter did not return TextFieldSettings.");
+    field.Text = edited;
+
+    AssertEqual("After", field.Text.Content, "editing parent Text row changes Content");
+    AssertEqual("Gill Sans MT", field.Text.FontName, "editing parent Text row preserves font name");
+    AssertNearly(7, field.Text.FontSize, 0.001, "editing parent Text row preserves font size");
+    AssertEqual("%SALE_DEVICE%", field.Text.DatabaseField, "editing parent Text row preserves database binding");
+}
+
+static void TestNewLayoutCreation(string temp, UltraPrint22115LayoutCodec codec)
+{
+    var fresh = codec.CreateNewLayout("NewCard");
+    fresh.WidthMm = 90;
+    fresh.HeightMm = 55;
+    fresh.Dpi = 600;
+    var text = codec.CreateField(fresh, LayoutFieldKind.Text, LayoutSide.Front, legacyTypeCode: 3);
+    text.Text.Content = "Created from C#";
+
+    var path = Path.Combine(temp, "new-layout.ly");
+    codec.Save(fresh, path);
+    AssertTrue(File.Exists(path), "new layout save creates .ly without an original source file");
+    AssertEqual(UltraPrint22115LayoutCodec.KnownLayoutFileSize, File.ReadAllBytes(path).Length, "new layout uses recovered 2.2.115 shell size");
+
+    var reload = codec.Load(path);
+    AssertNearly(90, reload.WidthMm, 0.001, "new layout width round-trip");
+    AssertNearly(55, reload.HeightMm, 0.001, "new layout height round-trip");
+    AssertEqual(600, reload.Dpi, "new layout DPI round-trip");
+    AssertEqual(1, reload.Fields.Count, "new layout field count round-trip");
+    AssertEqual(LayoutSide.Front, reload.Fields[0].Side, "new layout without explicit side marker defaults to Front");
+    AssertEqual("Created from C#", reload.Fields[0].Text.Content, "new layout text round-trip");
+
+    var empty = codec.CreateNewLayout("EmptyCard");
+    var emptyPath = Path.Combine(temp, "empty-layout.ly");
+    codec.Save(empty, emptyPath);
+    var emptyReload = codec.Load(emptyPath);
+    AssertEqual(0, emptyReload.Fields.Count, "completely empty new layout can be saved and reopened");
 }
 
 static void TestDelimitedDataSource(string temp)

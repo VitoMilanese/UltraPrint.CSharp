@@ -75,6 +75,7 @@ public sealed class MainForm : Form
         var menu = new MenuStrip();
 
         var file = new ToolStripMenuItem("File");
+        file.DropDownItems.Add(Item("New layout...", Keys.Control | Keys.N, (_, _) => NewLayout()));
         file.DropDownItems.Add(Item("Open layout (.ly)...", Keys.Control | Keys.O, (_, _) => OpenLayout()));
         file.DropDownItems.Add(Item("Save", Keys.Control | Keys.S, (_, _) => SaveLayout(false)));
         file.DropDownItems.Add(Item("Save As...", Keys.Control | Keys.Shift | Keys.S, (_, _) => SaveLayout(true)));
@@ -221,6 +222,27 @@ public sealed class MainForm : Form
             BeginInvoke((Action)PrintLayout);
     }
 
+    private void NewLayout()
+    {
+        if (!ConfirmDiscardChanges()) return;
+
+        var layout = _codec.CreateNewLayout();
+        if (!LayoutSettingsDialog.Edit(this, layout)) return;
+
+        _layout = layout;
+        _layoutPath = null;
+        _dirty = true;
+        _canvas.Layout = layout;
+        _canvas.SelectedField = null;
+        SetSide(LayoutSide.Front);
+        RefreshFieldList();
+        _tabs.SelectedIndex = 0;
+        _diagnostics.Text = "New unsaved UltraPrint 2.2.115-compatible layout.\r\n" +
+                            "The first save creates a legacy .ly shell from the embedded known-good format template.\r\n";
+        UpdateTitle();
+        _status.Text = $"New layout — {layout.WidthMm:0.###} x {layout.HeightMm:0.###} mm, {layout.Dpi} DPI";
+    }
+
     private void OpenLayout()
     {
         if (!ConfirmDiscardChanges()) return;
@@ -254,12 +276,12 @@ public sealed class MainForm : Form
         }
     }
 
-    private void SaveLayout(bool saveAs)
+    private bool SaveLayout(bool saveAs)
     {
         if (_layout is null)
         {
-            MessageBox.Show(this, "Open a .ly file first.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
+            MessageBox.Show(this, "Create or open a layout first.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return false;
         }
 
         var target = _layoutPath;
@@ -270,24 +292,32 @@ public sealed class MainForm : Form
                 Filter = "UltraPrint layout (*.ly)|*.ly|All files (*.*)|*.*",
                 Title = "Save UltraPrint layout",
                 FileName = target is null ? _layout.Name + ".ly" : Path.GetFileName(target),
-                InitialDirectory = target is null ? null : Path.GetDirectoryName(target)
+                InitialDirectory = target is null ? null : Path.GetDirectoryName(target),
+                AddExtension = true,
+                DefaultExt = "ly"
             };
-            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            if (dialog.ShowDialog(this) != DialogResult.OK) return false;
             target = dialog.FileName;
         }
 
+        var isNewLegacyFile = string.IsNullOrWhiteSpace(_layout.SourcePath) || !File.Exists(_layout.SourcePath);
         try
         {
             _codec.Save(_layout, target!);
             _layoutPath = Path.GetFullPath(target!);
+            _layout.Name = Path.GetFileNameWithoutExtension(_layoutPath);
             _dirty = false;
             UpdateTitle();
             RefreshDiagnostics(_layoutPath);
-            _status.Text = $"Saved {Path.GetFileName(_layoutPath)} — legacy unknown bytes preserved";
+            _status.Text = isNewLegacyFile
+                ? $"Created {Path.GetFileName(_layoutPath)} — UltraPrint 2.2.115-compatible .ly"
+                : $"Saved {Path.GetFileName(_layoutPath)} — legacy unknown bytes preserved";
+            return true;
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Layout save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
         }
     }
 
@@ -322,7 +352,12 @@ public sealed class MainForm : Form
 
     private void InsertImageField(bool photoPlaceholder)
     {
-        if (_layout is null || string.IsNullOrWhiteSpace(_layoutPath)) return;
+        if (_layout is null) return;
+
+        // Legacy image fields normally store a path relative to the layout directory. A brand-new
+        // unsaved layout therefore needs its .ly destination before an image can be imported.
+        if (string.IsNullOrWhiteSpace(_layoutPath) && !SaveLayout(saveAs: true)) return;
+
         using var dialog = new OpenFileDialog
         {
             Filter = "Images|*.bmp;*.gif;*.jpg;*.jpeg;*.png;*.tif;*.tiff;*.pcx|All files (*.*)|*.*",
@@ -333,7 +368,7 @@ public sealed class MainForm : Form
         try
         {
             var field = _codec.CreateField(_layout, LayoutFieldKind.Image, CurrentInsertSide(), photoPlaceholder ? 6 : 5);
-            field.Image.File = LegacyAssetResolver.ImportForLayout(_layoutPath, dialog.FileName);
+            field.Image.File = LegacyAssetResolver.ImportForLayout(_layoutPath!, dialog.FileName);
             field.LegacyPayload = field.Image.File;
             field.Image.KeepAspectRatio = photoPlaceholder;
             _canvas.InvalidateAssets();
@@ -609,8 +644,10 @@ public sealed class MainForm : Form
 
     private void UpdateTitle()
     {
-        var file = _layoutPath is null ? string.Empty : " — " + Path.GetFileName(_layoutPath);
-        Text = "UltraPrint" + file + (_dirty ? " *" : string.Empty);
+        var layoutName = _layout is null
+            ? string.Empty
+            : " — " + (_layoutPath is null ? _layout.Name : Path.GetFileName(_layoutPath));
+        Text = "UltraPrint" + layoutName + (_dirty ? " *" : string.Empty);
     }
 
     private bool ConfirmDiscardChanges()

@@ -10,16 +10,27 @@ namespace UltraPrint.Legacy.Layout;
 /// The format was recovered from TPMFAO19.ly and correlated with Campo.ini/native VB6 code.
 /// Unknown bytes are deliberately preserved. Existing records keep their original 264-byte raw
 /// template; moving/duplicating records therefore keeps still-unknown flags instead of rebuilding
-/// them from guesses.
+/// them from guesses. Brand-new layouts are seeded from an embedded known-good 2.2.115 template
+/// and then have all legacy field slots rebuilt from the managed model.
 /// </summary>
 public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
 {
     public const int KnownFieldTableOffset = 2029;
     public const int FieldRecordSize = 264;
     public const int MaxFieldSlots = 64;
+    public const int KnownLayoutFileSize = 20_148;
     public const double TwipsPerMillimeter = 1440.0 / 25.4;
 
+    private const string TemplateResourceFileName = "UltraPrint22115Template.ly";
     private static readonly Encoding LegacyEncoding = Encoding.Latin1;
+
+    public CardLayout CreateNewLayout(string name = "Untitled") => new()
+    {
+        Name = string.IsNullOrWhiteSpace(name) ? "Untitled" : name.Trim(),
+        WidthMm = 85,
+        HeightMm = 54,
+        Dpi = 300
+    };
 
     public CardLayout Load(string path)
     {
@@ -47,7 +58,9 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
             Dpi = dpi
         };
 
-        var currentSide = LayoutSide.Unknown;
+        // Legacy files without an explicit fronte/retro image marker are treated as front-side
+        // layouts. A retro/back image marker still switches all following records to Back.
+        var currentSide = LayoutSide.Front;
         var slots = Math.Min(MaxFieldSlots, (data.Length - fieldTableOffset) / FieldRecordSize);
         for (var index = 0; index < slots; index++)
         {
@@ -79,13 +92,11 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         var source = layout.SourcePath;
-        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
-            throw new InvalidOperationException("Safe legacy save requires the original .ly file so unknown bytes can be preserved.");
-
-        var data = File.ReadAllBytes(source);
+        var hasLegacySource = !string.IsNullOrWhiteSpace(source) && File.Exists(source);
+        var data = hasLegacySource ? File.ReadAllBytes(source!) : ReadEmbeddedTemplate();
         var fieldTableOffset = FindFieldTableOffset(data);
         if (fieldTableOffset < 0)
-            throw new InvalidDataException("Could not locate the recovered UltraPrint field table in the source file.");
+            throw new InvalidDataException("Could not locate the recovered UltraPrint field table in the source/template file.");
 
         ValidateFieldIndices(layout);
 
@@ -95,9 +106,9 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
 
         var slots = Math.Min(MaxFieldSlots, (data.Length - fieldTableOffset) / FieldRecordSize);
 
-        // Clear only records that were active in the source file. They are rewritten below from
-        // each field's preserved raw template. This is what makes delete/reorder/insert possible
-        // without touching the still-unknown header/footer ranges.
+        // Clear active records from either the original layout or the embedded known-good template.
+        // Existing layouts still preserve their unknown header/footer bytes and each field keeps its
+        // 264-byte raw template. New layouts inherit only the known version shell, not sample fields.
         for (var index = 0; index < slots; index++)
         {
             var record = data.AsSpan(fieldTableOffset + index * FieldRecordSize, FieldRecordSize);
@@ -292,6 +303,13 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
 
     private static int FindFieldTableOffset(ReadOnlySpan<byte> data)
     {
+        // UltraPrint 2.2.115 uses a fixed 20,148-byte shell in the recovered fixture. New empty
+        // layouts have no plausible active records for heuristic detection, so recognize that exact
+        // shell before scanning for populated tables.
+        if (data.Length == KnownLayoutFileSize &&
+            KnownFieldTableOffset + FieldRecordSize * MaxFieldSlots <= data.Length)
+            return KnownFieldTableOffset;
+
         if (LooksLikeFieldTable(data, KnownFieldTableOffset))
             return KnownFieldTableOffset;
 
@@ -480,6 +498,24 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
                 return candidate;
         }
         return requested + "_" + Guid.NewGuid().ToString("N")[..6];
+    }
+
+    private static byte[] ReadEmbeddedTemplate()
+    {
+        var assembly = typeof(UltraPrint22115LayoutCodec).Assembly;
+        var resourceName = assembly.GetManifestResourceNames()
+            .SingleOrDefault(name => name.EndsWith(TemplateResourceFileName, StringComparison.OrdinalIgnoreCase));
+        if (resourceName is null)
+            throw new InvalidOperationException("The embedded UltraPrint 2.2.115 blank-layout template is missing.");
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException("Could not open the embedded UltraPrint 2.2.115 layout template.");
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        var data = memory.ToArray();
+        if (data.Length != KnownLayoutFileSize)
+            throw new InvalidDataException($"Unexpected embedded layout template size: {data.Length} bytes.");
+        return data;
     }
 
     private static bool IsPlausibleCardSize(float width, float height) =>
