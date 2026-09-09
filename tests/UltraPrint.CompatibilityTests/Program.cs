@@ -1,0 +1,165 @@
+using System.Data;
+using UltraPrint.Core.Models;
+using UltraPrint.Legacy.Data;
+using UltraPrint.Legacy.Layout;
+using UltraPrint.Legacy.Security;
+
+var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "TPMFAO19.ly");
+if (!File.Exists(fixture)) throw new FileNotFoundException("Compatibility fixture not copied to output.", fixture);
+
+var codec = new UltraPrint22115LayoutCodec();
+var originalBytes = File.ReadAllBytes(fixture);
+var layout = codec.Load(fixture);
+
+AssertNearly(85, layout.WidthMm, 0.001, "layout width");
+AssertNearly(54, layout.HeightMm, 0.001, "layout height");
+AssertEqual(300, layout.Dpi, "layout dpi");
+AssertEqual(11, layout.Fields.Count, "decoded field count");
+AssertEqual(LayoutSide.Front, layout.Fields.Single(x => x.Name == "Immagine_1").Side, "front marker side");
+AssertEqual(LayoutSide.Back, layout.Fields.Single(x => x.Name == "Immagine_11").Side, "back marker side");
+AssertEqual(LegacyDataSourceKind.Access, LegacyRecordSourceFactory.DetectKind("Operatori.FFM"), "FFM uses Jet/Access compatibility path");
+AssertEqual(LegacyDataSourceKind.DBase, LegacyRecordSourceFactory.DetectKind("archive.dbf"), "DBF detection");
+AssertEqual(LegacyDataSourceKind.Excel, LegacyRecordSourceFactory.DetectKind("records.xls"), "Excel detection");
+
+var temp = Path.Combine(Path.GetTempPath(), "UltraPrint.CompatibilityTests", Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(temp);
+try
+{
+    var roundTrip = Path.Combine(temp, "roundtrip.ly");
+    codec.Save(layout, roundTrip);
+    var roundTripBytes = File.ReadAllBytes(roundTrip);
+    AssertTrue(originalBytes.AsSpan().SequenceEqual(roundTripBytes), "unchanged .ly round-trip must be byte-identical");
+
+    var duplicateLayout = codec.Load(roundTrip);
+    var source = duplicateLayout.Fields.Single(x => x.Name == "%HOLDER_LAST_NAME%");
+    var clone = codec.DuplicateField(duplicateLayout, source);
+    AssertEqual(12, duplicateLayout.Fields.Count, "duplicate increments field count");
+    AssertTrue(clone.LegacyRecordTemplate.Length == UltraPrint22115LayoutCodec.FieldRecordSize, "duplicate preserves full raw record template");
+
+    var duplicatedFile = Path.Combine(temp, "duplicated.ly");
+    codec.Save(duplicateLayout, duplicatedFile);
+    var duplicatedReload = codec.Load(duplicatedFile);
+    AssertEqual(12, duplicatedReload.Fields.Count, "duplicated layout reload count");
+    var duplicatedReloaded = duplicatedReload.Fields.Single(x => x.Index == clone.Index);
+    AssertEqual(clone.LegacyTypeCode, duplicatedReloaded.LegacyTypeCode, "duplicated field type survives reload");
+    AssertNearly(clone.Xmm, duplicatedReloaded.Xmm, 0.02, "duplicated field X survives reload");
+    AssertNearly(clone.Ymm, duplicatedReloaded.Ymm, 0.02, "duplicated field Y survives reload");
+    AssertTrue(duplicatedReloaded.LegacyRecordTemplate.Length == UltraPrint22115LayoutCodec.FieldRecordSize, "duplicated raw record survives reload");
+
+    var insertedLayout = codec.Load(roundTrip);
+    var inserted = codec.CreateField(insertedLayout, LayoutFieldKind.Text, LayoutSide.Front, legacyTypeCode: 3);
+    inserted.Text.Content = "Compatibility test";
+    var insertedFile = Path.Combine(temp, "inserted.ly");
+    codec.Save(insertedLayout, insertedFile);
+    var insertedReload = codec.Load(insertedFile);
+    AssertEqual(12, insertedReload.Fields.Count, "inserted field reload count");
+    var insertedReloaded = insertedReload.Fields.Single(x => x.Name == inserted.Name);
+    AssertEqual(LayoutSide.Front, insertedReloaded.Side, "new front field remains before back-side marker");
+    AssertEqual("Compatibility test", insertedReloaded.Text.Content, "new text payload round-trip");
+
+    AssertTrue(codec.DeleteField(insertedLayout, inserted), "delete returns true");
+    var deletedFile = Path.Combine(temp, "deleted.ly");
+    codec.Save(insertedLayout, deletedFile);
+    var deletedReload = codec.Load(deletedFile);
+    AssertEqual(11, deletedReload.Fields.Count, "deleted field does not reappear after save/reload");
+
+    TestDelimitedDataSource(temp);
+    TestRecordBinding(roundTrip, codec);
+    TestManagedDataState(roundTrip, codec);
+    TestOperatorDatabaseLocator(temp);
+
+    Console.WriteLine("UltraPrint compatibility tests passed.");
+}
+finally
+{
+    try { Directory.Delete(temp, recursive: true); }
+    catch { }
+}
+
+static void TestDelimitedDataSource(string temp)
+{
+    var csv = Path.Combine(temp, "records.csv");
+    File.WriteAllText(csv, "LAST_NAME;FIRST_NAME;NOTE\r\nRossi;Mario;\"A;B\"\r\nBianchi;Anna;Test\r\n");
+    using var source = LegacyRecordSourceFactory.Open(csv);
+    AssertEqual(LegacyDataSourceKind.Csv, source.Kind, "CSV record source kind");
+    var tableName = source.GetTableNames().Single();
+    var table = source.OpenTable(tableName);
+    AssertEqual(2, table.Rows.Count, "CSV row count");
+    AssertEqual(3, table.Columns.Count, "CSV column count");
+    AssertEqual("Rossi", Convert.ToString(table.Rows[0]["LAST_NAME"])!, "CSV first field");
+    AssertEqual("A;B", Convert.ToString(table.Rows[0]["NOTE"])!, "CSV quoted delimiter");
+}
+
+static void TestRecordBinding(string roundTrip, UltraPrint22115LayoutCodec codec)
+{
+    var sourceLayout = codec.Load(roundTrip);
+    var original = sourceLayout.Fields.Single(x => x.Name == "%HOLDER_LAST_NAME%");
+    var originalContent = original.Text.Content;
+
+    var record = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["HOLDER_LAST_NAME"] = "Rossi",
+        ["FIRST"] = "Mario"
+    };
+    var bound = LegacyRecordBinder.CreateBoundLayout(sourceLayout, record);
+    AssertEqual("Rossi", bound.Fields.Single(x => x.Index == original.Index).Text.Content, "placeholder record binding");
+    AssertEqual(originalContent, original.Text.Content, "record binding does not mutate legacy template");
+
+    var firstName = sourceLayout.Fields.Single(x => x.Name == "%HOLDER_FIRST_NAME%");
+    var overrides = new Dictionary<int, string> { [firstName.Index] = "FIRST" };
+    var overrideBound = LegacyRecordBinder.CreateBoundLayout(sourceLayout, record, overrides);
+    AssertEqual("Mario", overrideBound.Fields.Single(x => x.Index == firstName.Index).Text.Content, "managed binding override");
+}
+
+static void TestManagedDataState(string roundTrip, UltraPrint22115LayoutCodec codec)
+{
+    var stateLayout = codec.Load(roundTrip);
+    var field = stateLayout.Fields.Single(x => x.Name == "%HOLDER_LAST_NAME%");
+    var state = new ManagedLayoutDataState(
+        @"C:\Legacy\records.mdb",
+        "SELECT * FROM Tessere",
+        "Tessere",
+        new Dictionary<int, string> { [field.Index] = "COGNOME" });
+
+    ManagedBindingStore.SaveState(stateLayout, state);
+    var loaded = ManagedBindingStore.LoadState(stateLayout);
+    AssertEqual(state.DatabasePath!, loaded.DatabasePath!, "managed database path state");
+    AssertEqual(state.Sql!, loaded.Sql!, "managed SQL state");
+    AssertEqual(state.Table!, loaded.Table!, "managed table state");
+    AssertEqual("COGNOME", loaded.Bindings[field.Index], "managed field binding state");
+    AssertTrue(File.Exists(roundTrip + ".data.json"), "managed state uses non-destructive sidecar");
+}
+
+static void TestOperatorDatabaseLocator(string temp)
+{
+    var root = Path.Combine(temp, "operator-locator");
+    var dbDirectory = Path.Combine(root, "Db");
+    Directory.CreateDirectory(dbDirectory);
+
+    var candidates = LegacyOperatorDatabaseLocator.Candidates(root);
+    AssertEqual(Path.Combine(dbDirectory, "Operatori.FFM"), candidates[0], "operator DB first startup path");
+    AssertEqual(Path.Combine(root, "Operatori.FFM"), candidates[1], "operator DB legacy root fallback");
+
+    File.WriteAllText(candidates[1], "root");
+    AssertEqual(candidates[1], LegacyOperatorDatabaseLocator.FindExisting(root)!, "operator DB root fallback discovery");
+
+    File.WriteAllText(candidates[0], "db");
+    AssertEqual(candidates[0], LegacyOperatorDatabaseLocator.FindExisting(root)!, "operator DB Db folder takes precedence");
+}
+
+static void AssertTrue(bool condition, string name)
+{
+    if (!condition) throw new InvalidOperationException($"Assertion failed: {name}");
+}
+
+static void AssertEqual<T>(T expected, T actual, string name) where T : notnull
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        throw new InvalidOperationException($"Assertion failed: {name}. Expected {expected}, got {actual}.");
+}
+
+static void AssertNearly(double expected, double actual, double tolerance, string name)
+{
+    if (Math.Abs(expected - actual) > tolerance)
+        throw new InvalidOperationException($"Assertion failed: {name}. Expected {expected}, got {actual}.");
+}
