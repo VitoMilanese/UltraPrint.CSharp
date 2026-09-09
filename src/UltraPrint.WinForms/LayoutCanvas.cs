@@ -6,19 +6,27 @@ namespace UltraPrint.WinForms;
 
 public sealed class LayoutCanvas : Control
 {
+    private const float HandleSize = 8f;
+    private const double MinimumFieldSizeMm = 0.5;
+
     private readonly Dictionary<string, Image> _imageCache = new(StringComparer.OrdinalIgnoreCase);
     private CardLayout? _layout;
     private LayoutSide _side = LayoutSide.Front;
     private LayoutField? _selectedField;
-    private bool _dragging;
+    private DragMode _dragMode;
     private Point _lastMouse;
+    private bool _showGrid = true;
+    private bool _snapToGrid;
+    private bool _previewMode;
+    private double _gridSizeMm = 1.0;
 
     public LayoutCanvas()
     {
         DoubleBuffered = true;
         BackColor = SystemColors.ControlDark;
         Cursor = Cursors.Default;
-        SetStyle(ControlStyles.ResizeRedraw, true);
+        TabStop = true;
+        SetStyle(ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
     }
 
     public CardLayout? Layout
@@ -59,8 +67,49 @@ public sealed class LayoutCanvas : Control
         }
     }
 
+    public bool ShowGrid
+    {
+        get => _showGrid;
+        set
+        {
+            if (_showGrid == value) return;
+            _showGrid = value;
+            Invalidate();
+        }
+    }
+
+    public bool SnapToGrid
+    {
+        get => _snapToGrid;
+        set => _snapToGrid = value;
+    }
+
+    public bool PreviewMode
+    {
+        get => _previewMode;
+        set
+        {
+            if (_previewMode == value) return;
+            _previewMode = value;
+            Cursor = Cursors.Default;
+            Invalidate();
+        }
+    }
+
+    public double GridSizeMm
+    {
+        get => _gridSizeMm;
+        set => _gridSizeMm = Math.Clamp(value, 0.1, 10.0);
+    }
+
     public event EventHandler? SelectedFieldChanged;
     public event EventHandler? FieldChanged;
+
+    protected override bool IsInputKey(Keys keyData)
+    {
+        var key = keyData & Keys.KeyCode;
+        return key is Keys.Left or Keys.Right or Keys.Up or Keys.Down || base.IsInputKey(keyData);
+    }
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -81,12 +130,15 @@ public sealed class LayoutCanvas : Control
             e.Graphics.FillRectangle(shadow, card.X + 5, card.Y + 5, card.Width, card.Height);
         e.Graphics.FillRectangle(Brushes.White, card);
 
+        if (_showGrid && !_previewMode)
+            DrawGrid(e.Graphics, card, scale);
+
         foreach (var field in VisibleFields().OrderBy(x => x.Level).ThenBy(x => x.Index))
             DrawField(e.Graphics, field, card, scale);
 
         e.Graphics.DrawRectangle(Pens.DimGray, card.X, card.Y, card.Width, card.Height);
 
-        if (_selectedField is not null && IsVisibleOnCurrentSide(_selectedField))
+        if (!_previewMode && _selectedField is not null && IsVisibleOnCurrentSide(_selectedField))
         {
             var r = FieldRectangle(_selectedField, card, scale);
             using var pen = new Pen(Color.DodgerBlue, 2) { DashStyle = DashStyle.Dash };
@@ -98,10 +150,24 @@ public sealed class LayoutCanvas : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left || _layout is null) return;
+        if (e.Button != MouseButtons.Left || _layout is null || _previewMode) return;
         Focus();
 
         var (card, scale) = GetCardGeometry();
+        if (_selectedField is not null && IsVisibleOnCurrentSide(_selectedField))
+        {
+            var selectedRect = FieldRectangle(_selectedField, card, scale);
+            var handle = HitTestHandle(selectedRect, e.Location);
+            if (handle != DragMode.None)
+            {
+                _dragMode = handle;
+                _lastMouse = e.Location;
+                Capture = true;
+                Cursor = CursorForDragMode(handle);
+                return;
+            }
+        }
+
         var hit = VisibleFields()
             .OrderByDescending(x => x.Level)
             .ThenByDescending(x => x.Index)
@@ -110,7 +176,7 @@ public sealed class LayoutCanvas : Control
         SelectedField = hit;
         if (hit is not null)
         {
-            _dragging = true;
+            _dragMode = DragMode.Move;
             _lastMouse = e.Location;
             Capture = true;
             Cursor = Cursors.SizeAll;
@@ -120,26 +186,65 @@ public sealed class LayoutCanvas : Control
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (!_dragging || _selectedField is null || _layout is null) return;
-        var (_, scale) = GetCardGeometry();
-        if (scale <= 0) return;
+        if (_previewMode || _layout is null) return;
 
-        var dx = (e.X - _lastMouse.X) / scale;
-        var dy = (e.Y - _lastMouse.Y) / scale;
-        _selectedField.Xmm += dx;
-        _selectedField.Ymm += dy;
-        _lastMouse = e.Location;
-        FieldChanged?.Invoke(this, EventArgs.Empty);
-        Invalidate();
+        if (_dragMode != DragMode.None && _selectedField is not null)
+        {
+            var (_, scale) = GetCardGeometry();
+            if (scale <= 0) return;
+
+            var dx = (e.X - _lastMouse.X) / scale;
+            var dy = (e.Y - _lastMouse.Y) / scale;
+            ApplyDrag(_selectedField, _dragMode, dx, dy);
+            _lastMouse = e.Location;
+            FieldChanged?.Invoke(this, EventArgs.Empty);
+            Invalidate();
+            return;
+        }
+
+        Cursor = HitTestCursor(e.Location);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
         if (e.Button != MouseButtons.Left) return;
-        _dragging = false;
+        _dragMode = DragMode.None;
         Capture = false;
         Cursor = Cursors.Default;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (_previewMode || _selectedField is null) return;
+
+        var step = e.Control ? 0.01 : e.Shift ? 1.0 : 0.1;
+        var changed = true;
+        switch (e.KeyCode)
+        {
+            case Keys.Left:
+                _selectedField.Xmm -= step;
+                break;
+            case Keys.Right:
+                _selectedField.Xmm += step;
+                break;
+            case Keys.Up:
+                _selectedField.Ymm -= step;
+                break;
+            case Keys.Down:
+                _selectedField.Ymm += step;
+                break;
+            default:
+                changed = false;
+                break;
+        }
+
+        if (!changed) return;
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        FieldChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
     }
 
     protected override void Dispose(bool disposing)
@@ -177,6 +282,28 @@ public sealed class LayoutCanvas : Control
             card.Y + (float)(field.Ymm * scale),
             Math.Max(1, (float)(field.WidthMm * scale)),
             Math.Max(1, (float)(field.HeightMm * scale)));
+
+    private void DrawGrid(Graphics g, RectangleF card, float scale)
+    {
+        if (_layout is null || _gridSizeMm <= 0) return;
+        using var minorPen = new Pen(Color.FromArgb(28, Color.Black), 1);
+        using var majorPen = new Pen(Color.FromArgb(55, Color.Black), 1);
+
+        var step = Math.Max(0.1, _gridSizeMm);
+        for (var x = step; x < _layout.WidthMm; x += step)
+        {
+            var px = card.Left + (float)(x * scale);
+            var isMajor = Math.Abs(x / 5.0 - Math.Round(x / 5.0)) < 0.0001;
+            g.DrawLine(isMajor ? majorPen : minorPen, px, card.Top, px, card.Bottom);
+        }
+
+        for (var y = step; y < _layout.HeightMm; y += step)
+        {
+            var py = card.Top + (float)(y * scale);
+            var isMajor = Math.Abs(y / 5.0 - Math.Round(y / 5.0)) < 0.0001;
+            g.DrawLine(isMajor ? majorPen : minorPen, card.Left, py, card.Right, py);
+        }
+    }
 
     private void DrawField(Graphics g, LayoutField field, RectangleF card, float scale)
     {
@@ -285,17 +412,118 @@ public sealed class LayoutCanvas : Control
 
     private static void DrawHandles(Graphics g, RectangleF r)
     {
-        const float size = 6;
-        foreach (var p in new[]
+        foreach (var p in HandleCenters(r))
         {
-            new PointF(r.Left, r.Top), new PointF(r.Right, r.Top),
-            new PointF(r.Left, r.Bottom), new PointF(r.Right, r.Bottom)
-        })
-        {
-            g.FillRectangle(Brushes.White, p.X - size / 2, p.Y - size / 2, size, size);
-            g.DrawRectangle(Pens.DodgerBlue, p.X - size / 2, p.Y - size / 2, size, size);
+            g.FillRectangle(Brushes.White, p.X - HandleSize / 2, p.Y - HandleSize / 2, HandleSize, HandleSize);
+            g.DrawRectangle(Pens.DodgerBlue, p.X - HandleSize / 2, p.Y - HandleSize / 2, HandleSize, HandleSize);
         }
     }
+
+    private static PointF[] HandleCenters(RectangleF r) =>
+    [
+        new(r.Left, r.Top),
+        new(r.Right, r.Top),
+        new(r.Left, r.Bottom),
+        new(r.Right, r.Bottom)
+    ];
+
+    private static DragMode HitTestHandle(RectangleF rect, Point point)
+    {
+        var handles = HandleCenters(rect);
+        var modes = new[] { DragMode.ResizeTopLeft, DragMode.ResizeTopRight, DragMode.ResizeBottomLeft, DragMode.ResizeBottomRight };
+        for (var i = 0; i < handles.Length; i++)
+        {
+            var h = handles[i];
+            var hit = new RectangleF(h.X - HandleSize, h.Y - HandleSize, HandleSize * 2, HandleSize * 2);
+            if (hit.Contains(point)) return modes[i];
+        }
+        return DragMode.None;
+    }
+
+    private Cursor HitTestCursor(Point point)
+    {
+        if (_selectedField is not null && IsVisibleOnCurrentSide(_selectedField))
+        {
+            var (card, scale) = GetCardGeometry();
+            var rect = FieldRectangle(_selectedField, card, scale);
+            var handle = HitTestHandle(rect, point);
+            if (handle != DragMode.None) return CursorForDragMode(handle);
+            if (rect.Contains(point)) return Cursors.SizeAll;
+        }
+        return Cursors.Default;
+    }
+
+    private static Cursor CursorForDragMode(DragMode mode) => mode switch
+    {
+        DragMode.ResizeTopLeft or DragMode.ResizeBottomRight => Cursors.SizeNWSE,
+        DragMode.ResizeTopRight or DragMode.ResizeBottomLeft => Cursors.SizeNESW,
+        DragMode.Move => Cursors.SizeAll,
+        _ => Cursors.Default
+    };
+
+    private void ApplyDrag(LayoutField field, DragMode mode, double dx, double dy)
+    {
+        var x = field.Xmm;
+        var y = field.Ymm;
+        var w = field.WidthMm;
+        var h = field.HeightMm;
+
+        switch (mode)
+        {
+            case DragMode.Move:
+                x += dx;
+                y += dy;
+                break;
+            case DragMode.ResizeTopLeft:
+                x += dx;
+                y += dy;
+                w -= dx;
+                h -= dy;
+                break;
+            case DragMode.ResizeTopRight:
+                y += dy;
+                w += dx;
+                h -= dy;
+                break;
+            case DragMode.ResizeBottomLeft:
+                x += dx;
+                w -= dx;
+                h += dy;
+                break;
+            case DragMode.ResizeBottomRight:
+                w += dx;
+                h += dy;
+                break;
+        }
+
+        if (w < MinimumFieldSizeMm)
+        {
+            if (mode is DragMode.ResizeTopLeft or DragMode.ResizeBottomLeft)
+                x -= MinimumFieldSizeMm - w;
+            w = MinimumFieldSizeMm;
+        }
+        if (h < MinimumFieldSizeMm)
+        {
+            if (mode is DragMode.ResizeTopLeft or DragMode.ResizeTopRight)
+                y -= MinimumFieldSizeMm - h;
+            h = MinimumFieldSizeMm;
+        }
+
+        if (_snapToGrid)
+        {
+            x = Snap(x);
+            y = Snap(y);
+            w = Math.Max(MinimumFieldSizeMm, Snap(w));
+            h = Math.Max(MinimumFieldSizeMm, Snap(h));
+        }
+
+        field.Xmm = x;
+        field.Ymm = y;
+        field.WidthMm = w;
+        field.HeightMm = h;
+    }
+
+    private double Snap(double value) => Math.Round(value / _gridSizeMm) * _gridSizeMm;
 
     private Image? GetCachedImage(string path)
     {
@@ -329,5 +557,15 @@ public sealed class LayoutCanvas : Control
         var g = (ole >> 8) & 0xFF;
         var b = (ole >> 16) & 0xFF;
         return Color.FromArgb(r, g, b);
+    }
+
+    private enum DragMode
+    {
+        None,
+        Move,
+        ResizeTopLeft,
+        ResizeTopRight,
+        ResizeBottomLeft,
+        ResizeBottomRight
     }
 }
