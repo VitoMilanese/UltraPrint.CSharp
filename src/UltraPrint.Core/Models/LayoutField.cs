@@ -7,6 +7,8 @@ public enum LayoutFieldKind
     Unknown,
     Text,
     Image,
+    Rectangle,
+    Barcode,
     Table,
     MagneticStripe,
     Chip,
@@ -39,6 +41,13 @@ public sealed class LayoutField
     [Browsable(false)]
     public string LegacyPayload { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Raw 264-byte UltraPrint 2.2.115 field record used as a preservation template.
+    /// It lets the editor move/duplicate a record without destroying still-unknown legacy flags.
+    /// </summary>
+    [Browsable(false)]
+    public byte[] LegacyRecordTemplate { get; set; } = Array.Empty<byte>();
+
     public double Xmm { get; set; }
     public double Ymm { get; set; }
     public double WidthMm { get; set; }
@@ -57,7 +66,17 @@ public sealed class LayoutField
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public TableFieldSettings Table { get; } = new();
 
-    public override string ToString() => string.IsNullOrWhiteSpace(Name) ? $"Field {Index}" : Name;
+    public override string ToString()
+    {
+        var side = Side switch
+        {
+            LayoutSide.Front => "F",
+            LayoutSide.Back => "B",
+            _ => "?"
+        };
+        var label = string.IsNullOrWhiteSpace(Name) ? $"Field {Index}" : Name;
+        return $"[{side}] #{Index:00} {label}";
+    }
 }
 
 [TypeConverter(typeof(ExpandableObjectConverter))]

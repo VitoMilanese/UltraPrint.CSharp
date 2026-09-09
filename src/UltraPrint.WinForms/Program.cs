@@ -9,6 +9,10 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         var options = LegacyStartupOptions.Parse(args);
-        Application.Run(new MainForm(options));
+        var mainForm = new MainForm(options);
+        DatabaseWorkspaceIntegration.Attach(mainForm);
+        SecurityIntegration.Attach(mainForm);
+        ScriptIntegration.Attach(mainForm);
+        Application.Run(mainForm);
     }
 }
