@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace UltraPrint.Legacy.Scripting;
 
 public static class LegacyScriptContract
@@ -215,7 +213,10 @@ public static class LegacyScriptPathResolver
 
 public sealed class LegacyScriptSession : IDisposable
 {
+    private sealed record RegisteredObject(string Name, object Value, bool AddMembers);
+
     private readonly ILegacyScriptEngine _engine;
+    private readonly List<RegisteredObject> _registeredObjects = new();
     private bool _loaded;
 
     public LegacyScriptSession(ILegacyScriptEngine engine)
@@ -227,21 +228,27 @@ public sealed class LegacyScriptSession : IDisposable
     public string? SourcePath { get; private set; }
     public string? PreparedSource { get; private set; }
 
-    public void Load(string source, string? sourcePath = null, bool prepareLegacyCode = true)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        _engine.Reset();
-        PreparedSource = prepareLegacyCode ? LegacyScriptCodePreprocessor.Prepare(source) : source;
-        SourcePath = sourcePath;
-        _engine.AddCode(PreparedSource, sourcePath);
-        _loaded = true;
-    }
-
     public void RegisterObject(string name, object value, bool addMembers = true)
     {
         if (_loaded)
             throw new InvalidOperationException("Register script objects before loading code, matching the recovered AddObjects -> AddProg lifecycle.");
-        _engine.AddObject(name, value, addMembers);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(value);
+        _registeredObjects.Add(new RegisteredObject(name.Trim(), value, addMembers));
+    }
+
+    public void Load(string source, string? sourcePath = null, bool prepareLegacyCode = true)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        _loaded = false;
+        _engine.Reset();
+        foreach (var item in _registeredObjects)
+            _engine.AddObject(item.Name, item.Value, item.AddMembers);
+
+        PreparedSource = prepareLegacyCode ? LegacyScriptCodePreprocessor.Prepare(source) : source;
+        SourcePath = sourcePath;
+        _engine.AddCode(PreparedSource, sourcePath);
+        _loaded = true;
     }
 
     public object? Invoke(string eventName, params object?[] arguments)
