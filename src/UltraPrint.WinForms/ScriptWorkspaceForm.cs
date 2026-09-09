@@ -38,6 +38,7 @@ public sealed class ScriptWorkspaceForm : Form
         AutoSize = true,
         TextAlign = ContentAlignment.MiddleLeft
     };
+    private readonly ToolTip _toolTip = new();
     private readonly ToolStripStatusLabel _status = new("Ready");
 
     private LegacyScriptSession? _session;
@@ -88,7 +89,11 @@ public sealed class ScriptWorkspaceForm : Form
             UpdateEngineStatus();
             DiscoverScripts();
         };
-        FormClosed += (_, _) => DisposeSession();
+        FormClosed += (_, _) =>
+        {
+            DisposeSession();
+            _toolTip.Dispose();
+        };
         UpdateTitle();
     }
 
@@ -166,13 +171,14 @@ public sealed class ScriptWorkspaceForm : Form
         if (!OperatingSystem.IsWindows())
         {
             _engineStatus.Text = "Script engine: Windows only";
+            _toolTip.SetToolTip(_engineStatus, "Microsoft Script Control is a Windows COM component.");
             return;
         }
 
         _engineStatus.Text = MsScriptControlEngine.IsAvailable(out var reason)
             ? "Script engine: MSSCRIPT available"
             : "Script engine: unavailable";
-        _engineStatus.ToolTipText(reason);
+        _toolTip.SetToolTip(_engineStatus, reason ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(reason)) AppendDiagnostic(reason);
     }
 
@@ -446,15 +452,5 @@ public sealed class ScriptWorkspaceForm : Form
         Text = _sourcePath is null
             ? "UltraPrint legacy VBScript"
             : $"UltraPrint legacy VBScript — {Path.GetFileName(_sourcePath)}";
-    }
-}
-
-internal static class LabelExtensions
-{
-    public static void ToolTipText(this Control control, string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        var toolTip = new ToolTip();
-        toolTip.SetToolTip(control, text);
     }
 }
