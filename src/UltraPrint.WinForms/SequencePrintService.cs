@@ -52,9 +52,27 @@ public sealed class SequencePrintService
         CardLayout layout,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
-        SequencePrintSettings settings)
+        SequencePrintSettings settings) =>
+        ShowPreviewCore(owner, layout, records, bindings, settings, singleSheetIndex: null);
+
+    public void ShowPreviewSheet(
+        IWin32Window owner,
+        CardLayout layout,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
+        IReadOnlyDictionary<int, string> bindings,
+        SequencePrintSettings settings,
+        int sheetIndex) =>
+        ShowPreviewCore(owner, layout, records, bindings, settings, sheetIndex);
+
+    private void ShowPreviewCore(
+        IWin32Window owner,
+        CardLayout layout,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
+        IReadOnlyDictionary<int, string> bindings,
+        SequencePrintSettings settings,
+        int? singleSheetIndex)
     {
-        using var document = CreateDocument(layout, records, bindings, settings);
+        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex);
         using var dialog = new PrintPreviewDialog
         {
             Document = document,
@@ -71,9 +89,27 @@ public sealed class SequencePrintService
         CardLayout layout,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
-        SequencePrintSettings settings)
+        SequencePrintSettings settings) =>
+        PrintCore(owner, layout, records, bindings, settings, singleSheetIndex: null);
+
+    public void PrintSheet(
+        IWin32Window owner,
+        CardLayout layout,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
+        IReadOnlyDictionary<int, string> bindings,
+        SequencePrintSettings settings,
+        int sheetIndex) =>
+        PrintCore(owner, layout, records, bindings, settings, sheetIndex);
+
+    private void PrintCore(
+        IWin32Window owner,
+        CardLayout layout,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
+        IReadOnlyDictionary<int, string> bindings,
+        SequencePrintSettings settings,
+        int? singleSheetIndex)
     {
-        using var document = CreateDocument(layout, records, bindings, settings);
+        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex);
         using var dialog = new PrintDialog
         {
             Document = document,
@@ -92,7 +128,8 @@ public sealed class SequencePrintService
         CardLayout layout,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
-        SequencePrintSettings settings)
+        SequencePrintSettings settings,
+        int? singleSheetIndex)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(records);
@@ -104,8 +141,12 @@ public sealed class SequencePrintService
         var sides = settings.Side == LayoutSide.Unknown
             ? new[] { LayoutSide.Front, LayoutSide.Back }
             : new[] { settings.Side };
-        var sheetCount = SequencePrintPlanner.GetSheetCount(records.Count, settings);
-        var sheetIndex = 0;
+        var totalSheetCount = SequencePrintPlanner.GetSheetCount(records.Count, settings);
+        var firstSheetIndex = singleSheetIndex ?? 0;
+        if (firstSheetIndex < 0 || firstSheetIndex >= totalSheetCount)
+            throw new ArgumentOutOfRangeException(nameof(singleSheetIndex));
+        var lastSheetExclusive = singleSheetIndex.HasValue ? firstSheetIndex + 1 : totalSheetCount;
+        var sheetIndex = firstSheetIndex;
         var sideIndex = 0;
 
         var document = CreateBaseDocument(
@@ -154,12 +195,12 @@ public sealed class SequencePrintService
                 sideIndex = 0;
                 sheetIndex++;
             }
-            e.HasMorePages = sheetIndex < sheetCount;
+            e.HasMorePages = sheetIndex < lastSheetExclusive;
         };
 
         document.EndPrint += (_, _) =>
         {
-            sheetIndex = 0;
+            sheetIndex = firstSheetIndex;
             sideIndex = 0;
         };
         return document;
