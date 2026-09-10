@@ -9,7 +9,8 @@ namespace UltraPrint.WinForms;
 /// Bridges the script-visible frmDatabase/Tabella objects to the database state belonging to the
 /// layout currently open in MainForm. The normal Database / Records workspace persists source,
 /// table and SQL choices into .ly.data.json; this host consumes that same state rather than
-/// creating a separate script-only configuration.
+/// creating a separate script-only configuration. When the workspace is visible, its exact
+/// current grid row wins so legacy script consumers see the same record as the operator.
 /// </summary>
 internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, IDisposable
 {
@@ -20,6 +21,7 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
     private IReadOnlyList<string> _tableNames = Array.Empty<string>();
     private DataTable? _records;
     private int _position = -1;
+    private DatabaseWorkspaceRuntimeBridge? _workspace;
 
     public WinFormsLegacyDatabaseHost(MainForm form)
     {
@@ -28,15 +30,33 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
 
     internal IReadOnlyList<string> TableNames => _tableNames;
     internal DataTable? Records => _records;
-    internal int Position => _position;
+    internal int Position => ActiveWorkspace()?.Position ?? _position;
+    internal int RecordCount => ActiveWorkspace()?.Count ?? _records?.Rows.Count ?? 0;
 
     internal IReadOnlyDictionary<string, object?>? CurrentRecord
     {
         get
         {
+            var workspace = ActiveWorkspace();
+            if (workspace is not null) return workspace.CurrentRecord;
             if (_records is null || _position < 0 || _position >= _records.Rows.Count) return null;
             return LegacyRecordBinder.Snapshot(_records.Rows[_position]);
         }
+    }
+
+    internal void AttachWorkspace(DatabaseWorkspaceForm workspace, CardLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(layout);
+        _workspace = new DatabaseWorkspaceRuntimeBridge(workspace, layout);
+    }
+
+    internal void DetachWorkspace(DatabaseWorkspaceForm workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        if (_workspace is null) return;
+        if (!_workspace.IsAvailable || ReferenceEquals(FindOwningWorkspace(_workspace), workspace))
+            _workspace = null;
     }
 
     public void RefreshTables()
@@ -74,7 +94,7 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
         }
 
         _tableNames = _source.GetTableNames();
-        var previousPosition = _position;
+        var previousPosition = Position;
         if (!string.IsNullOrWhiteSpace(state.Sql))
         {
             _records = _source.ExecuteQuery(state.Sql);
@@ -102,7 +122,7 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
     private void EnsureLayout(CardLayout layout)
     {
         if (ReferenceEquals(_layout, layout)) return;
-        ResetRuntime();
+        DisposeSource();
         _layout = layout;
     }
 
@@ -126,6 +146,20 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
         _source = LegacyRecordSourceFactory.Open(fullPath);
         _openedSourcePath = fullPath;
     }
+
+    private DatabaseWorkspaceRuntimeBridge? ActiveWorkspace()
+    {
+        var workspace = _workspace;
+        var layout = CurrentLayout();
+        return workspace is not null && workspace.IsAvailable && layout is not null && ReferenceEquals(workspace.Layout, layout)
+            ? workspace
+            : null;
+    }
+
+    // The bridge intentionally does not expose its Form publicly. Detach is also called from the
+    // exact FormClosed closure, so an unavailable bridge can always be discarded safely. A live
+    // bridge is kept until the integration replaces/clears it.
+    private static DatabaseWorkspaceForm? FindOwningWorkspace(DatabaseWorkspaceRuntimeBridge bridge) => null;
 
     private CardLayout? CurrentLayout() => FindControl<LayoutCanvas>(_form)?.Layout;
 
@@ -162,5 +196,9 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
         _position = -1;
     }
 
-    public void Dispose() => ResetRuntime();
+    public void Dispose()
+    {
+        _workspace = null;
+        ResetRuntime();
+    }
 }
