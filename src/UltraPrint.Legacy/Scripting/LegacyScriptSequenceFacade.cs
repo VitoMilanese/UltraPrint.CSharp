@@ -9,14 +9,16 @@ namespace UltraPrint.Legacy.Scripting;
 /// </summary>
 public interface ILegacyScriptSequenceHost
 {
+    object PickRecord();
     void SaveSetup(string? fileName);
     void LoadSetup(string? fileName);
 }
 
 /// <summary>
-/// Script-visible subset whose native parameter behavior and managed side effects are
-/// sufficiently decoded. ScriviSetup/LeggiSetup each take one Optional Variant filename;
-/// when omitted the native code builds App.Path\\ly\\&lt;frmCarta.Caption&gt;.Seq.
+/// Script-visible Sequenza subset whose native parameter behavior and managed side effects are
+/// decoded. Pescarecord opens the record-search flow and returns the one-based absolute record
+/// position, or zero when cancelled/not found. ScriviSetup/LeggiSetup each take one Optional
+/// Variant filename; when omitted native code builds App.Path\\ly\\&lt;frmCarta.Caption&gt;.Seq.
 /// </summary>
 [ComVisible(true)]
 [ClassInterface(ClassInterfaceType.AutoDispatch)]
@@ -28,6 +30,8 @@ public sealed class LegacyScriptSequenceFacade
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
     }
+
+    public object Pescarecord() => _host.PickRecord();
 
     public void ScriviSetup(object? Filename = null) =>
         _host.SaveSetup(NormalizeOptionalFileName(Filename));
@@ -45,17 +49,17 @@ public sealed class LegacyScriptSequenceFacade
 }
 
 /// <summary>
-/// Native ABI facts recovered for the non-event Sequenza methods. Pescarecord's ret 8
-/// includes a hidden 16-byte Variant result pointer, so it has zero explicit arguments.
-/// PosizionaPagina consumes one explicit Variant. ScriviSetup/LeggiSetup each consume one
-/// Optional Variant filename. Only the setup pair is exposed until the other semantics are
-/// decoded beyond their calling shape.
+/// Native ABI/behavior facts recovered for the non-event Sequenza methods. Pescarecord has zero
+/// explicit arguments and returns a Variant: native code shows FormQBE, calls DAO FindFirst, and
+/// on success returns AbsolutePosition + 1. PosizionaPagina consumes one explicit Variant but its
+/// complete page/tab-numbering side effects are not yet safe to expose. ScriviSetup/LeggiSetup
+/// each consume one Optional Variant filename.
 /// </summary>
 public static class LegacyScriptSequenceContract
 {
     public static IReadOnlyList<LegacyScriptSequenceMethodContract> Methods { get; } =
     [
-        new("Pescarecord", 0x005C3590, 0, 0, LegacyScriptReturnKind.Variant, false),
+        new("Pescarecord", 0x005C3590, 0, 0, LegacyScriptReturnKind.Variant, true),
         new("PosizionaPagina", 0x005C5250, 1, 0, LegacyScriptReturnKind.None, false),
         new("ScriviSetup", 0x005D5810, 1, 1, LegacyScriptReturnKind.None, true),
         new("LeggiSetup", 0x005D65B0, 1, 1, LegacyScriptReturnKind.None, true)

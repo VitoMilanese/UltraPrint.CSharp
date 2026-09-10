@@ -1,3 +1,4 @@
+using System.Data;
 using System.Runtime.CompilerServices;
 using UltraPrint.Core.Models;
 using UltraPrint.Legacy.Configuration;
@@ -11,6 +12,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
     {
         TestLegacySeqRoundTrip();
         TestSequenceAliasIdentityAndForwarding();
+        TestLegacyQbeMatching();
         TestRecoveredContracts();
     }
 
@@ -91,7 +93,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
 
     private static void TestSequenceAliasIdentityAndForwarding()
     {
-        var sequenceHost = new RecordingSequenceHost();
+        var sequenceHost = new RecordingSequenceHost { PickedRecord = 7 };
         var databaseHost = new RecordingDatabaseHost();
         var engine = new RecordingScriptEngine();
         using var session = new LegacyScriptSession(engine);
@@ -108,7 +110,10 @@ internal static class SequenceScriptFacadeCompatibilityTests
         AssertTrue(ReferenceEquals(sequenza, stampa), "Sequenza and Stampa preserve native alias identity");
         AssertTrue(ReferenceEquals(sequenza, facades.Sequence), "registered Sequenza is returned facade");
 
-        facades.Sequence!.ScriviSetup();
+        AssertEqual(7, Convert.ToInt32(facades.Sequence!.Pescarecord()), "Pescarecord forwards native one-based result");
+        AssertEqual(1, sequenceHost.PickCalls, "Pescarecord forwards to live sequence host");
+
+        facades.Sequence.ScriviSetup();
         AssertEqual(1, sequenceHost.SaveCalls, "ScriviSetup forwards to live sequence host");
         AssertTrue(sequenceHost.LastSavePath is null, "omitted ScriviSetup filename remains Missing/default");
 
@@ -121,17 +126,35 @@ internal static class SequenceScriptFacadeCompatibilityTests
         AssertRelativeOrder(engine.Calls, "AddObject:Stampa:True", "AddObject:frmDatabase:True");
     }
 
+    private static void TestLegacyQbeMatching()
+    {
+        var records = new DataTable();
+        records.Columns.Add("Name", typeof(string));
+        records.Columns.Add("Age", typeof(int));
+        records.Columns.Add("Enabled", typeof(bool));
+        records.Rows.Add("Alfa", 18, true);
+        records.Rows.Add("Beta", 27, false);
+        records.Rows.Add("Gamma", 42, true);
+
+        AssertEqual(2, LegacyQbeMatcher.FindFirst(records, "Name", ".*.", "et"), "QBE contains returns one-based row");
+        AssertEqual(2, LegacyQbeMatcher.FindFirst(records, "Name", "..*", "TA"), "QBE text matching is case-insensitive");
+        AssertEqual(2, LegacyQbeMatcher.FindFirst(records, "Age", ">=", "20"), "QBE numeric comparison");
+        AssertEqual(2, LegacyQbeMatcher.FindFirst(records, "Age", "x--x", "20--30"), "QBE numeric range");
+        AssertEqual(2, LegacyQbeMatcher.FindFirst(records, "Enabled", "Falso", string.Empty), "QBE false predicate");
+        AssertEqual(0, LegacyQbeMatcher.FindFirst(records, "Name", "=", "Missing"), "QBE no match returns zero");
+    }
+
     private static void TestRecoveredContracts()
     {
         var pesca = LegacyScriptSequenceContract.Methods.Single(x => x.Name == "Pescarecord");
         AssertEqual(0x005C3590, pesca.NativeAddress, "Pescarecord native address");
         AssertEqual(0, pesca.ExplicitArgumentCount, "Pescarecord hidden Variant result is not an explicit argument");
         AssertEqual(LegacyScriptReturnKind.Variant, pesca.ReturnKind, "Pescarecord returns Variant");
-        AssertTrue(!pesca.ManagedBehaviorExposed, "Pescarecord behavior remains unguessed");
+        AssertTrue(pesca.ManagedBehaviorExposed, "Pescarecord exposed after FindFirst/AbsolutePosition recovery");
 
         var posiziona = LegacyScriptSequenceContract.Methods.Single(x => x.Name == "PosizionaPagina");
         AssertEqual(1, posiziona.ExplicitArgumentCount, "PosizionaPagina one explicit Variant");
-        AssertTrue(!posiziona.ManagedBehaviorExposed, "PosizionaPagina semantics remain unguessed");
+        AssertTrue(!posiziona.ManagedBehaviorExposed, "PosizionaPagina page/tab numbering remains unexposed");
 
         foreach (var name in new[] { "ScriviSetup", "LeggiSetup" })
         {
@@ -175,10 +198,18 @@ internal static class SequenceScriptFacadeCompatibilityTests
 
     private sealed class RecordingSequenceHost : ILegacyScriptSequenceHost
     {
+        public int PickCalls { get; private set; }
+        public int PickedRecord { get; init; }
         public int SaveCalls { get; private set; }
         public int LoadCalls { get; private set; }
         public string? LastSavePath { get; private set; }
         public string? LastLoadPath { get; private set; }
+
+        public object PickRecord()
+        {
+            PickCalls++;
+            return PickedRecord;
+        }
 
         public void SaveSetup(string? fileName)
         {

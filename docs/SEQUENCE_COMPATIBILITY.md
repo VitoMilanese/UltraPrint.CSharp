@@ -2,7 +2,7 @@
 
 UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 method names include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, front/back/page controls, and row/column/margin/pitch handlers.
 
-The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and now also exposes the first proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
+The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and also exposes the proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
 
 ## Implemented visible workflow
 
@@ -30,14 +30,22 @@ Exact printer-specific duplex mirroring/rotation remains unclaimed until UltraPr
 
 ## Recovered native callable contracts
 
-Direct disassembly now distinguishes explicit parameters from VB6 hidden return storage:
+Direct disassembly distinguishes explicit parameters from VB6 hidden return storage:
 
 | Method | Native VA | Recovered callable shape | Managed exposure |
 | --- | ---: | --- | --- |
-| `Pescarecord` | `0x005C3590` | zero explicit arguments, returns `Variant` through a hidden 16-byte result pointer | not yet exposed; return semantics still unresolved |
-| `PosizionaPagina` | `0x005C5250` | one explicit `Variant` argument, no hidden result observed | not yet exposed; argument meaning/side effects still unresolved |
+| `Pescarecord` | `0x005C3590` | zero explicit arguments; modal `FormQBE` -> DAO `FindFirst`; returns `AbsolutePosition + 1` as `Variant`, or `0` when cancelled/not found | exposed |
+| `PosizionaPagina` | `0x005C5250` | one explicit `Variant`; updates `Retro` plus `TabStrip1` page state, with `PaginaSingola`-dependent numbering | not yet exposed; final page-number normalization still being recovered |
 | `ScriviSetup` | `0x005D5810` | one **Optional Variant** filename | exposed |
 | `LeggiSetup` | `0x005D65B0` | one **Optional Variant** filename | exposed |
+
+### `Pescarecord`
+
+Native `Pescarecord` starts with a zero Variant result and `On Error Resume Next`. It builds FormQBE field metadata from the current DAO Recordset, shows the compact QBE dialog, then runs `Recordset.FindFirst`. A failed `NoMatch` shows the literal message `Record non trovato`; success leaves the recordset on the matching row and returns its one-based number via `AbsolutePosition + 1`.
+
+The managed `Sequenza.Pescarecord()` / `Stampa.Pescarecord()` now preserves those observable semantics. Its QBE dialog uses the recovered condition tokens (`*..`, `.*.`, `..*`, `=`, `<>`, range, comparisons, `x--x`, `Vero`, `Falso`). Search is performed against the same loaded rows used by Database / Records, and a successful match moves that shared `BindingSource`. Consequently later `Tabella`, preview, binding, or script operations see the found record rather than a private copy.
+
+The managed matcher evaluates `DataTable` values instead of issuing DAO `FindFirst` directly. This preserves the workflow across Access/FFM as well as managed DBF/Excel/CSV/text sources while keeping the recovered one-based return contract.
 
 The Optional-argument check in both setup methods is the same VB runtime path. When the filename is Missing, native code constructs:
 
@@ -51,7 +59,7 @@ The managed default path resolver reproduces that convention using the current l
 
 `[Sequenza]`
 
-The new `LegacySequenceIniStore` therefore reads and writes actual `.Seq` INI files. It currently maps only controls whose meaning is unambiguous in the managed model:
+The `LegacySequenceIniStore` reads and writes actual `.Seq` INI files. It currently maps only controls whose meaning is unambiguous in the managed model:
 
 - `Righe` -> rows;
 - `Colonne` -> columns;
@@ -65,7 +73,7 @@ Existing `.Seq` files are updated conservatively: unknown keys are preserved. Th
 
 ### Why `MargineDestro` is not mapped to managed `MarginLeftMm`
 
-The old form's handler is explicitly named `MargineDestro_Change` (right margin), while the first managed planner used a left-origin margin. Until `PosizionaPagina` / print geometry proves whether the legacy sequence fills from the right edge, mirrors columns, or merely labels the control unusually, mapping it to the managed left margin would be a guess. The key is therefore preserved untouched instead of silently changing sheet geometry.
+The old form's handler is explicitly named `MargineDestro_Change` (right margin), while the first managed planner used a left-origin margin. Until the remaining `PosizionaPagina` / print geometry proves whether the legacy sequence fills from the right edge, mirrors columns, or merely labels the control unusually, mapping it to the managed left margin would be a guess. The key is therefore preserved untouched instead of silently changing sheet geometry.
 
 The managed `.sequence.json` sidecar remains in use for managed-only/unresolved state. Loading a legacy `.Seq` starts from the current managed settings and replaces only the five confirmed equivalents, so unresolved values are not destroyed.
 
@@ -73,21 +81,21 @@ The managed `.sequence.json` sidecar remains in use for managed-only/unresolved 
 
 Native `Funzioni.AddObjects` registers the exact same global `Sequenza` instance twice, under the names `Sequenza` and `Stampa`.
 
-The managed registration now does the same: one `LegacyScriptSequenceFacade` object is registered under both names, in recovered relative order:
+The managed registration does the same: one `LegacyScriptSequenceFacade` object is registered under both names, in recovered relative order:
 
 `... Db -> Sequenza -> Stampa -> frmDatabase ...`
 
 The exposed subset is:
 
+- `Sequenza.Pescarecord()` / `Stampa.Pescarecord()`;
 - `Sequenza.ScriviSetup([Filename])` / `Stampa.ScriviSetup([Filename])`;
 - `Sequenza.LeggiSetup([Filename])` / `Stampa.LeggiSetup([Filename])`.
 
-An application-lifetime WinForms sequence host follows the layout currently open in `MainForm`; legacy setup loads are mirrored into that layout's managed sequence state. `Pescarecord` and `PosizionaPagina` remain deliberately unavailable rather than being replaced with fake methods whose parameter semantics are not yet fully understood.
+An application-lifetime WinForms sequence host follows the layout currently open in `MainForm`; legacy setup loads are mirrored into that layout's managed sequence state and record search shares the application-lifetime database host. `PosizionaPagina` remains deliberately unavailable until its complete page/tab numbering is proven.
 
 ## Remaining parity work
 
-- finish `PosizionaPagina` geometry recovery, especially `MargineDestro`, horizontal fill direction, orientation and paper-edge behavior;
-- decode the value returned by `Pescarecord` and its exact interaction with the active database row;
+- finish `PosizionaPagina` page/tab-number recovery and geometry, especially `MargineDestro`, horizontal fill direction, orientation and paper-edge behavior;
 - map the remaining `.Seq` control names only when their native meaning is proven;
 - make an already-open managed Sequence workspace refresh immediately when a script calls `LeggiSetup` (the persisted state is already shared; reopening/reloading sees it now);
 - compare paper orientation, printer hard margins and front/back transforms against the legacy executable;

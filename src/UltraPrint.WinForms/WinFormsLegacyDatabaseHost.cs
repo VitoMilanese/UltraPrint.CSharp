@@ -10,7 +10,7 @@ namespace UltraPrint.WinForms;
 /// layout currently open in MainForm. The normal Database / Records workspace persists source,
 /// table and SQL choices into .ly.data.json; this host consumes that same state rather than
 /// creating a separate script-only configuration. When the workspace is visible, its exact
-/// current grid row wins so legacy script consumers see the same record as the operator.
+/// current BindingSource row wins so legacy script consumers see the same record as the operator.
 /// </summary>
 internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, IDisposable
 {
@@ -56,6 +56,31 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
         ArgumentNullException.ThrowIfNull(workspace);
         if (_workspace is not null && ReferenceEquals(_workspace.Workspace, workspace))
             _workspace = null;
+    }
+
+    internal DataTable? PrepareRecordsForSearch()
+    {
+        var workspace = ActiveWorkspace();
+        if (workspace?.Records is not null) return workspace.Records;
+        FindRecord();
+        return _records;
+    }
+
+    internal void MoveToRecord(int zeroBasedPosition)
+    {
+        var workspace = ActiveWorkspace();
+        if (workspace is not null)
+        {
+            workspace.MoveTo(zeroBasedPosition);
+            return;
+        }
+
+        if (_records is null || _records.Rows.Count == 0)
+        {
+            _position = -1;
+            return;
+        }
+        _position = Math.Clamp(zeroBasedPosition, 0, _records.Rows.Count - 1);
     }
 
     public void RefreshTables()
