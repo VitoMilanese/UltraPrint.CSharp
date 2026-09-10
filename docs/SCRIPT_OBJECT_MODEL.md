@@ -33,6 +33,8 @@ The goal is to build managed facades from proven callable contracts rather than 
 
 The `Fn`/`Funzioni` alias has been rechecked directly in the native `AddObjects` body: both name blocks resolve global `0x0062B2C8` and allocate from object info `0x0041751C`. The managed registration therefore deliberately injects the same `LegacyScriptFunctionsFacade` instance under both names.
 
+The managed database bridge now applies the same rule to `Db`/`frmDatabase`: both names are registered against one `LegacyScriptDatabaseFacade` and therefore one live database host/state object.
+
 ## Public member inventory recovered from VB6 metadata
 
 These names are evidence of the original callable surface, not a claim that every signature/side effect is decoded.
@@ -41,6 +43,8 @@ These names are evidence of the original callable surface, not a claim that ever
 
 Recovered public names include `StampaRecord`, `CaricaSfondo`, `SetButton`, `SetCoordinate`, `AdattaCarta`, `PrinterEscape`, `Termina`, `PuoFare`, `SetPrivilegi`, `GestioneRecord`, `GestioneSequenza`, `GestioneLato`, `GestioneCampo` and `VersioneDemo`, plus menu/toolbar handlers.
 
+The managed facade currently exposes the strongly decoded zero-argument subset `StampaRecord`, `CaricaSfondo` and `Termina` against the live application. The remaining ABI-mapped members stay unavailable until their argument meaning/side effects are proven.
+
 ### `Preview` / `frmPrinter`
 
 No trustworthy project-public method names were recovered from the VB object metadata. Its standard form/control properties may still be used by scripts and must be validated from real script samples or native call sites.
@@ -48,6 +52,13 @@ No trustworthy project-public method names were recovered from the VB object met
 ### `Db` / `frmDatabase`
 
 Recovered names include `RiempiTabelle`, `NometipoCampo`, `cmdQuery_Click`, `txtSql_DblClick` and form events.
+
+The managed shared `Db`/`frmDatabase` facade now exposes:
+
+- `RiempiTabelle()` — zero explicit arguments; refreshes table/view names from the same `ILegacyRecordSource` abstraction used by the managed Database / Records workspace;
+- `NometipoCampo(Tipo)` — one explicit argument; exact native DAO mapping: `1 YESNO`, `2 BYTE`, `3 INTEGER`, `4 LONG`, `5 CURRENCY`, `6 SINGLE`, `7 DOUBLE`, `8 DATE`, `10 TEXT`, `11 LONGBINARY`, `12 MEMO`, `16 AUTOINCRFIELD`; unknown values return an empty string.
+
+The host follows the current layout's `.ly.data.json` database/query/table state. When the Database / Records workspace is open for that layout, its exact visible current grid row is also exposed to the compatibility host for later record-dependent calls.
 
 ### `Sequenza` / `Stampa`
 
@@ -94,6 +105,10 @@ No trustworthy project-public names were recovered beyond form events. The hardw
 
 Recovered project-public names are `Carica` and `Trovarecord`.
 
+`Trovarecord()` is now exposed: native cleanup proves zero explicit arguments, and native string references show its record-query role (`Select` / `From` / `where` / `order by`). The managed method re-executes the current layout's persisted query/table state through the same record-source abstraction. When the visible Database / Records workspace is open, the compatibility host observes its exact selected row.
+
+`Carica` is intentionally still unavailable. Its body consumes caller-provided data through `Funzioni.Parola`, but the complete source-level parameter contract is not yet proven.
+
 ### `frmlogin`
 
 No trustworthy project-public method names were recovered. Standard form/control members remain possible.
@@ -120,14 +135,18 @@ Recovered names include `Comando` and printer/device configuration event handler
 
 ## Current managed facade slice
 
-The script workspace registers the following proven objects before loading code, preserving their native relative order:
+The script workspace registers the following proven objects, preserving their relative native order while skipping names that do not yet have real behavior:
 
-1. `Me` -> `LegacyScriptHostFacade`, exposing `Chiudimi()` so `Unload Me -> Chiudimi` reaches the deferred native-style unload state machine;
-2. `Carta` -> `LegacyScriptCartaFacade` when a live managed layout is available;
-3. `Fn` -> shared `LegacyScriptFunctionsFacade`;
-4. `Funzioni` -> the same shared `LegacyScriptFunctionsFacade` instance;
-5. `File` -> `LegacyScriptFileFacade`;
-6. `App` -> `LegacyScriptAppFacade`.
+1. `Me` -> `LegacyScriptHostFacade`;
+2. `Mainform` -> live `LegacyScriptMainFormFacade`;
+3. `Db` -> shared `LegacyScriptDatabaseFacade`;
+4. `frmDatabase` -> the exact same database facade instance as `Db`;
+5. `Carta` -> `LegacyScriptCartaFacade` when a live managed layout is available;
+6. `Tabella` -> separate `LegacyScriptTableFacade` backed by the same database host;
+7. `Fn` -> shared `LegacyScriptFunctionsFacade`;
+8. `Funzioni` -> the same shared functions instance;
+9. `File` -> `LegacyScriptFileFacade`;
+10. `App` -> `LegacyScriptAppFacade`.
 
 The `Funzioni` facade uses the same `LegacyScriptVariableTable` instance passed into `Interpretariga`, so `@()` macro expansion and script calls to `Fn.GetVariabile` / `Funzioni.SetVariabile` observe one state just as the VB6 singleton did.
 
@@ -137,11 +156,10 @@ These facade classes are COM-visible AutoDispatch classes for compatibility with
 
 The most useful next targets are now:
 
-1. `Mainform` — expose only proven workflow actions and properties;
-2. `Db` / `frmDatabase` and `Tabella` — bridge record/database state while preserving alias identity;
-3. `Sequenza` / `Stampa` — bridge the page-imposition/print workflow while sharing identity;
-4. `Printer`, `Screen`, `ClipBoard` — replace only intrinsic members observed in real workflows;
-5. device-specific `SmartDriver`, `Dispositivi`, `Chip` after the standard workflow is stable;
-6. finish the remaining `Carta` methods only as their argument semantics are proved.
+1. finish `Tabella.Carica` and later `Carta.Record2Card` once their argument semantics are proven;
+2. `Sequenza` / `Stampa` — bridge the page-imposition/print workflow while sharing identity;
+3. `Printer`, `Screen`, `ClipBoard` — replace only intrinsic members observed in real workflows;
+4. device-specific `SmartDriver`, `Dispositivi`, `Chip` after the standard workflow is stable;
+5. finish remaining `Mainform` / `Carta` methods only as their parameter semantics are proved.
 
 A representative production `.vbs` remains the best evidence for deciding which members from the large metadata surface are actually required.
