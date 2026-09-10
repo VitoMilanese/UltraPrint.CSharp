@@ -54,8 +54,7 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
     internal void DetachWorkspace(DatabaseWorkspaceForm workspace)
     {
         ArgumentNullException.ThrowIfNull(workspace);
-        if (_workspace is null) return;
-        if (!_workspace.IsAvailable || ReferenceEquals(FindOwningWorkspace(_workspace), workspace))
+        if (_workspace is not null && ReferenceEquals(_workspace.Workspace, workspace))
             _workspace = null;
     }
 
@@ -155,11 +154,6 @@ internal sealed class WinFormsLegacyDatabaseHost : ILegacyScriptDatabaseHost, ID
             ? workspace
             : null;
     }
-
-    // The bridge intentionally does not expose its Form publicly. Detach is also called from the
-    // exact FormClosed closure, so an unavailable bridge can always be discarded safely. A live
-    // bridge is kept until the integration replaces/clears it.
-    private static DatabaseWorkspaceForm? FindOwningWorkspace(DatabaseWorkspaceRuntimeBridge bridge) => null;
 
     private CardLayout? CurrentLayout() => FindControl<LayoutCanvas>(_form)?.Layout;
 
