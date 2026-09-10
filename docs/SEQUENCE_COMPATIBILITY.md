@@ -40,7 +40,9 @@ This keeps legacy `.ly` bytes untouched and can be migrated once the original se
 
 Native `Funzioni.AddObjects` registers the same global `Sequenza` instance twice, under the names `Sequenza` and `Stampa`. That alias identity is proven and must be preserved when the ScriptControl facade is enabled.
 
-The visible managed sequence workflow is implemented first. Individual script-callable `Sequenza` methods are not exposed merely from their names: their ABI/parameter semantics will be decoded before the shared `Sequenza`/`Stampa` facade is registered.
+The Sequence method-descriptor table is now correlated with the recovered member order. `StampaPagina_Click` and `StampaTutte_Click` use the same zero-argument signature descriptor as the other Click handlers. `Pescarecord`, `PosizionaPagina`, `ScriviSetup` and `LeggiSetup` use distinct descriptors, so their public callable contracts are deliberately not inferred from names alone.
+
+The visible managed sequence workflow is implemented first. Individual script-callable `Sequenza` methods will be exposed only after those distinct descriptors and native side effects are decoded.
 
 ## Remaining parity work
 
