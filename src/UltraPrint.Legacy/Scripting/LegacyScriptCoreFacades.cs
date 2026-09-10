@@ -188,7 +188,9 @@ public sealed record LegacyScriptCoreFacadeSet(
     LegacyScriptFileFacade File,
     LegacyScriptAppFacade App,
     LegacyScriptCartaFacade? Carta = null,
-    LegacyScriptMainFormFacade? Mainform = null);
+    LegacyScriptMainFormFacade? Mainform = null,
+    LegacyScriptDatabaseFacade? Database = null,
+    LegacyScriptTableFacade? Tabella = null);
 
 /// <summary>
 /// Registers only managed objects whose current member contracts are supported by
@@ -202,7 +204,8 @@ public static class LegacyScriptCoreFacadeRegistration
         string applicationDirectory,
         string executableName = "UltraPrint",
         ILegacyScriptCartaHost? cartaHost = null,
-        ILegacyScriptMainFormHost? mainFormHost = null)
+        ILegacyScriptMainFormHost? mainFormHost = null,
+        ILegacyScriptDatabaseHost? databaseHost = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var variables = new LegacyScriptVariableTable();
@@ -210,16 +213,24 @@ public static class LegacyScriptCoreFacadeRegistration
         var app = new LegacyScriptAppFacade(applicationDirectory, executableName);
         var file = new LegacyScriptFileFacade();
         var host = new LegacyScriptHostFacade(session.RequestUnload);
+
         var effectiveMainFormHost = mainFormHost ?? LegacyScriptMainFormHostRegistry.Current;
         var mainform = effectiveMainFormHost is null ? null : new LegacyScriptMainFormFacade(effectiveMainFormHost);
+        var effectiveDatabaseHost = databaseHost ?? LegacyScriptDatabaseHostRegistry.Current;
+        var database = effectiveDatabaseHost is null ? null : new LegacyScriptDatabaseFacade(effectiveDatabaseHost);
+        var tabella = effectiveDatabaseHost is null ? null : new LegacyScriptTableFacade(effectiveDatabaseHost);
         var effectiveCartaHost = cartaHost ?? LegacyScriptCartaHostRegistry.Current;
         var carta = effectiveCartaHost is null ? null : new LegacyScriptCartaFacade(effectiveCartaHost);
 
-        // Preserve the relative native AddObjects order for every managed facade currently
-        // available: Me -> Mainform -> Carta -> Fn -> Funzioni -> File -> App.
+        // Preserve the relative native AddObjects order among every facade currently available:
+        // Me -> Mainform -> Db -> frmDatabase -> Carta -> Tabella -> Fn -> Funzioni -> File -> App.
+        // Missing Preview/Sequenza/Stampa/Chip/etc. are skipped rather than replaced by fake stubs.
         session.RegisterObject("Me", host, addMembers: true);
         if (mainform is not null) session.RegisterObject("Mainform", mainform, addMembers: true);
+        if (database is not null) session.RegisterObject("Db", database, addMembers: true);
+        if (database is not null) session.RegisterObject("frmDatabase", database, addMembers: true);
         if (carta is not null) session.RegisterObject("Carta", carta, addMembers: true);
+        if (tabella is not null) session.RegisterObject("Tabella", tabella, addMembers: true);
 
         // Native AddObjects resolves both "Fn" and "Funzioni" through global
         // 0x62B2C8 / object-info 0x41751C. They are two names for the exact same
@@ -228,6 +239,6 @@ public static class LegacyScriptCoreFacadeRegistration
         session.RegisterObject("Funzioni", funzioni, addMembers: true);
         session.RegisterObject("File", file, addMembers: true);
         session.RegisterObject("App", app, addMembers: true);
-        return new LegacyScriptCoreFacadeSet(variables, funzioni, file, app, carta, mainform);
+        return new LegacyScriptCoreFacadeSet(variables, funzioni, file, app, carta, mainform, database, tabella);
     }
 }
