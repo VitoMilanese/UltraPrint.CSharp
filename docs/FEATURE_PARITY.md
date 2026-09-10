@@ -100,7 +100,7 @@ The original binary contains `Funzioni.CheckPassword`, `Funzioni.ChekPassword`, 
 | `.sequence.json` | **Managed compatibility state** | Non-destructive state for managed-only/unresolved sequence settings. Proven legacy setup controls, now including `PaginaSingola`, are also read/written through the recovered `[Sequenza]` `.Seq` INI format. |
 | `.vbs` / `Script` directories | **Partial/strong** | Root/application discovery, ScriptControl ProgID, 20 exposed names, lifecycle names, syntax normalization, substitution/macros, streaming AddProg execution, direct Run, optional argument semantics, `NO CODE` and deferred unload mechanics are recovered. The script workspace uses this pipeline; automatic layout execution remains disabled pending broader object-facade coverage. |
 | `UP.ini` | **Partial** | `/erasepw` `[Setup] Pw` compatibility implemented. Other settings remain. |
-| `Operatori.FFM` | **Partial/strong** | Recovered lookup order is `Db\\Operatori.FFM` then root fallback. Existing files open through ACE16/ACE12/Jet4; managed creation/CRUD/login exist, pending validation against a real legacy FFM. |
+| `Operatori.FFM` | **Partial/strong** | Recovered lookup order is `Db\Operatori.FFM` then root fallback. Existing files open through ACE16/ACE12/Jet4; managed creation/CRUD/login exist, pending validation against a real legacy FFM. |
 | `Contatori.dat` | **Missing** | Supplied file is empty; counter persistence behavior must be recovered from code/runtime samples. |
 
 ## Definition of done
