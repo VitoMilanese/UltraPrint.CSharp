@@ -4,14 +4,13 @@ using UltraPrint.Core.Models;
 namespace UltraPrint.Legacy.Data;
 
 /// <summary>
-/// Non-destructive persistence for the managed Sequenza replacement. Exact native
-/// LeggiSetup/ScriviSetup storage has not yet been proven byte-for-byte, so these
-/// settings are kept beside the layout instead of being written into unknown
-/// legacy state.
+/// Non-destructive persistence for the managed Sequenza replacement. Settings that
+/// are still managed-only remain beside the layout instead of being written into
+/// unknown legacy state.
 /// </summary>
 public static class ManagedSequenceStore
 {
-    private const int CurrentVersion = 1;
+    private const int CurrentVersion = 2;
 
     public static string? GetPath(CardLayout layout) =>
         string.IsNullOrWhiteSpace(layout.SourcePath) ? null : layout.SourcePath + ".sequence.json";
@@ -24,9 +23,35 @@ public static class ManagedSequenceStore
         try
         {
             var file = JsonSerializer.Deserialize<SequenceFile>(File.ReadAllText(path));
-            if (file?.Version != CurrentVersion || file.Settings is null) return CreateDefault(layout);
-            file.Settings.Validate(layout.WidthMm, layout.HeightMm);
-            return file.Settings;
+            if (file?.Settings is null) return CreateDefault(layout);
+
+            var settings = file.Settings;
+            switch (file.Version)
+            {
+                case CurrentVersion:
+                    break;
+                case 1:
+                    // Version 1 treated HorizontalPitchMm/VerticalPitchMm as the full
+                    // slot pitch. Native recovery proved Passo* is only the gap between
+                    // cards, so migrate without changing the physical placement.
+                    settings.HorizontalPitchMm = Math.Max(
+                        0,
+                        settings.HorizontalPitchMm > 0
+                            ? settings.HorizontalPitchMm - layout.WidthMm
+                            : 0);
+                    settings.VerticalPitchMm = Math.Max(
+                        0,
+                        settings.VerticalPitchMm > 0
+                            ? settings.VerticalPitchMm - layout.HeightMm
+                            : 0);
+                    settings.FillDirection = SequenceFillDirection.Horizontal;
+                    break;
+                default:
+                    return CreateDefault(layout);
+            }
+
+            settings.Validate(layout.WidthMm, layout.HeightMm);
+            return settings;
         }
         catch
         {
@@ -52,8 +77,9 @@ public static class ManagedSequenceStore
         Columns = 2,
         MarginLeftMm = 10,
         MarginTopMm = 10,
-        HorizontalPitchMm = layout.WidthMm,
-        VerticalPitchMm = layout.HeightMm,
+        HorizontalPitchMm = 0,
+        VerticalPitchMm = 0,
+        FillDirection = SequenceFillDirection.Horizontal,
         StartSlot = 0,
         Side = LayoutSide.Front,
         DrawCutMarks = false

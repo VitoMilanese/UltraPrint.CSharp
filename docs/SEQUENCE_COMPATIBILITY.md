@@ -1,15 +1,16 @@
 # Sequenza / sheet-print compatibility
 
-UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 method names include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, front/back/page controls, and row/column/margin/pitch handlers.
+UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 method names include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, front/back/page controls, and row/column/margin/spacing handlers.
 
 The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and also exposes the proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
 
 ## Implemented visible workflow
 
 - configurable rows and columns;
-- left/top managed margins in millimetres;
-- horizontal/vertical pitch in millimetres;
-- selectable first slot on the first sheet;
+- native-compatible X offset (`MargineDestro`) and top margin in millimetres;
+- native `PassoOrizzontale` / `PassoVerticale` inter-card gaps in millimetres;
+- Horizontal (`Orizzontale`, row-major) or Vertical (`Verticale`, column-major) record fill;
+- selectable first physical slot on the first sheet;
 - interactive sheet preview; clicking a first-sheet slot moves record 1 there;
 - previous/next/first/last logical sheet navigation;
 - Front, Back, or Front + Back output;
@@ -20,7 +21,31 @@ The managed replacement exposes the visible workflow through **Sequence -> Seque
 - database-record imposition using the same `.ly.data.json`, query/table state and field bindings as Database / Records;
 - template-only repeated-card printing when database records are disabled.
 
-`SequencePrintPlanner` fills the first sheet from `StartSlot` in row-major order. Every later sheet starts at slot zero. Current-sheet printing preserves that logical sheet's record assignment rather than re-numbering it from record 1.
+The first sheet starts at the selected physical slot in the selected fill order. Every later sheet starts from the first cell in that order. Current-sheet printing preserves that logical sheet's record assignment rather than re-numbering it from record 1.
+
+## Recovered native sheet geometry
+
+Direct disassembly of `cmdImposta_Click` and `StampaPagina_Click`, correlated with the MSFlexGrid property IDs used by the binary, proves the placement model rather than inferring it from Italian control names.
+
+The native code uses `MSFlexGrid.CellLeft` / `CellTop` as the cumulative card-size base. It also builds two spacing arrays: the first X element is `MargineDestro * 10`, the first Y element is `MargineAlto * 10`, and later elements contain `PassoOrizzontale * 10` / `PassoVerticale * 10`. `StampaPagina_Click` sums the applicable elements and divides by 10 before adding them to the grid cell origin.
+
+Consequently the managed formula is:
+
+```text
+X = MargineDestro + column * (cardWidth + PassoOrizzontale)
+Y = MargineAlto  + row    * (cardHeight + PassoVerticale)
+```
+
+This resolves two earlier ambiguities:
+
+- despite its name, `MargineDestro` is observably a **left-origin X offset** in the print path, so it maps to managed `MarginLeftMm`;
+- `PassoOrizzontale` and `PassoVerticale` are **gaps between cards**, not the complete slot pitch.
+
+The used sheet extent therefore includes all card widths/heights plus only `Columns - 1` / `Rows - 1` gaps.
+
+The `Orizzontale` and `Verticale` controls do not rotate the card. Their branches change the MSFlexGrid record traversal: `Orizzontale` fills rows first (row-major), while `Verticale` fills columns first (column-major). The managed planner preserves the selected physical first slot in either traversal.
+
+Managed `.sequence.json` state is now version 2. Version 1 stored the full slot pitch in the properties named `HorizontalPitchMm` / `VerticalPitchMm`; v1 files are migrated by subtracting the card width/height so their physical placement remains unchanged under the recovered native gap semantics. The property names are retained in JSON for compatibility, while the UI labels them as `Passo` gaps.
 
 ## Front/back behavior
 
@@ -43,48 +68,43 @@ Direct disassembly distinguishes explicit parameters from VB6 hidden return stor
 
 Native `Pescarecord` starts with a zero Variant result and `On Error Resume Next`. It builds FormQBE field metadata from the current DAO Recordset, shows the compact QBE dialog, then runs `Recordset.FindFirst`. A failed `NoMatch` shows the literal message `Record non trovato`; success leaves the recordset on the matching row and returns its one-based number via `AbsolutePosition + 1`.
 
-The managed `Sequenza.Pescarecord()` / `Stampa.Pescarecord()` now preserves those observable semantics. Its QBE dialog uses the recovered condition tokens (`*..`, `.*.`, `..*`, `=`, `<>`, range, comparisons, `x--x`, `Vero`, `Falso`). Search is performed against the same loaded rows used by Database / Records, and a successful match moves that shared `BindingSource`. Consequently later `Tabella`, preview, binding, or script operations see the found record rather than a private copy.
+The managed `Sequenza.Pescarecord()` / `Stampa.Pescarecord()` preserves those observable semantics. Its QBE dialog uses the recovered condition tokens (`*..`, `.*.`, `..*`, `=`, `<>`, range, comparisons, `x--x`, `Vero`, `Falso`). Search is performed against the same loaded rows used by Database / Records, and a successful match moves that shared `BindingSource`.
 
 The managed matcher evaluates `DataTable` values instead of issuing DAO `FindFirst` directly. This preserves the workflow across Access/FFM as well as managed DBF/Excel/CSV/text sources while keeping the recovered one-based return contract.
 
 ### `PosizionaPagina`
 
-The caller contract is now proven as `PosizionaPagina NumRecord`: the legacy `cmdPosiziona_Click` handler calls `Pescarecord`, rejects a zero result, and passes the returned one-based record number directly to `PosizionaPagina`. `RecordxPagina` is `Righe * Colonne`; `Pagine` is the ceiling of total records divided by that capacity.
+The caller contract is `PosizionaPagina NumRecord`: the legacy `cmdPosiziona_Click` handler calls `Pescarecord`, rejects a zero result, and passes the returned one-based record number directly to `PosizionaPagina`. `RecordxPagina` is `Righe * Colonne`; `Pagine` is the ceiling of total records divided by that capacity.
 
-The native page formula is intentionally preserved exactly, including its boundary quirk. With `PaginaSingola = 0`, UltraPrint assigns `Fix(NumRecord / RecordxPagina) + 1`; with `PaginaSingola <> 0`, it assigns `NumRecord Mod Pagine`. `Pagina_Change` then normalizes any non-empty result outside `1..Pagine` back to page `1`. Consequently an exact capacity multiple can select the following page, and a modulo result of zero becomes page 1. The managed `LegacySequencePositioning` helper regression-tests these behaviors instead of silently correcting them.
+The native page formula is intentionally preserved exactly, including its boundary quirk. With `PaginaSingola = 0`, UltraPrint assigns `Fix(NumRecord / RecordxPagina) + 1`; with `PaginaSingola <> 0`, it assigns `NumRecord Mod Pagine`. `Pagina_Change` then normalizes any non-empty result outside `1..Pagine` back to page `1`. Consequently an exact capacity multiple can select the following page, and a modulo result of zero becomes page 1.
 
 After assigning the page, native code calls `cmdImposta_Click`, walks `MSFlexGrid1` data cells (excluding row/column headers), compares each cell `Text` with `NumRecord`, and marks a match with `QBColor(12)` plus bold text. The managed Sequence preview mirrors that visible selection with a red/bold record cell. If the native page formula places the record on a page that does not contain it, the managed workspace preserves that page choice and leaves the record unhighlighted rather than silently relocating it.
 
-The Optional-argument check in both setup methods is the same VB runtime path. When the filename is Missing, native code constructs:
+## Legacy `.Seq` setup format
+
+When the Optional filename is Missing, native `ScriviSetup` and `LeggiSetup` build:
 
 `App.Path + "\\ly\\" + frmCarta.Caption + ".Seq"`
 
-The managed default path resolver reproduces that convention using the current layout name and its recovered legacy application root.
-
-## Legacy `.Seq` setup format
-
-`ScriviSetup` and `LeggiSetup` are no longer treated as an unknown binary format. Native code obtains the form's control collection, reads control `Name` plus `Value` or `Text` through late binding, and calls `File.WriteIni` / `File.GetIni` with the literal section name:
+They enumerate the form controls and persist `Name` plus `Value`/`Text` as INI values under:
 
 `[Sequenza]`
 
-The `LegacySequenceIniStore` reads and writes actual `.Seq` INI files. It currently maps only controls whose meaning is unambiguous in the managed model:
+`LegacySequenceIniStore` now maps the controls whose native behavior is proven:
 
 - `Righe` -> rows;
 - `Colonne` -> columns;
+- `MargineDestro` -> left-origin X offset;
 - `MargineAlto` -> top margin;
-- `PassoOrizzontale` -> horizontal pitch;
-- `PassoVerticale` -> vertical pitch;
+- `PassoOrizzontale` -> horizontal inter-card gap;
+- `PassoVerticale` -> vertical inter-card gap;
+- `Orizzontale` -> row-major fill;
+- `Verticale` -> column-major fill;
 - `PaginaSingola` -> recovered single-page positioning mode.
 
-Numeric values are written with the original Italian-style decimal comma and read using both Italian and invariant numeric forms.
+Numeric dimensions are written with the original Italian-style decimal comma and read using both Italian and invariant numeric forms. The two fill OptionButton values are emitted as numeric `1`/`0`, which is locale-independent for the legacy VB6 setter. Boolean text, including Italian `Vero`/`Falso`, is accepted when reading existing files.
 
-Existing `.Seq` files are updated conservatively: unknown keys are preserved. This is important because the old form also persists controls such as `MargineDestro`, `Fronte`, `Retro`, paper/card orientation, `Taglio`, and other state whose exact relationship to the managed placement model has not yet been proved.
-
-### Why `MargineDestro` is not mapped to managed `MarginLeftMm`
-
-The old form's handler is explicitly named `MargineDestro_Change` (right margin), while the first managed planner used a left-origin margin. `PosizionaPagina` is now proven to be record/page selection rather than placement geometry, so it does not resolve whether the legacy sequence fills from the right edge, mirrors columns, or merely labels the control unusually. Mapping the value to the managed left margin would still be a guess. The key is therefore preserved untouched instead of silently changing sheet geometry.
-
-The managed `.sequence.json` sidecar remains in use for managed-only/unresolved state. Loading a legacy `.Seq` starts from the current managed settings and replaces only the six confirmed equivalents, so unresolved values are not destroyed.
+Existing `.Seq` files are updated conservatively: unknown keys are preserved. `Fronte`/`Retro`, paper orientation, `Taglio`, and other device/print-specific controls remain unmapped until their exact output behavior is proven.
 
 ## ScriptControl identity
 
@@ -101,11 +121,11 @@ The exposed subset is:
 - `Sequenza.ScriviSetup([Filename])` / `Stampa.ScriviSetup([Filename])`;
 - `Sequenza.LeggiSetup([Filename])` / `Stampa.LeggiSetup([Filename])`.
 
-An application-lifetime WinForms sequence host follows the layout currently open in `MainForm`; record search shares the application-lifetime database host, `PosizionaPagina` drives the live Sequence workspace.
+An application-lifetime WinForms sequence host follows the layout currently open in `MainForm`; record search shares the application-lifetime database host, and `PosizionaPagina` drives the live Sequence workspace.
 
 ## Remaining parity work
 
-- recover the remaining print geometry, especially `MargineDestro`, horizontal fill direction, orientation and paper-edge behavior;
-- map the remaining `.Seq` control names only when their native meaning is proven;
-- compare paper orientation, printer hard margins and front/back transforms against the legacy executable;
+- recover and map `FoglioPortrait` / `FoglioLandscape` to the exact legacy paper-orientation and printer-coordinate behavior;
+- compare printer hard margins / printable-origin handling against the legacy executable;
+- recover exact front/back duplex mirroring/rotation and remaining `.Seq` controls such as `Fronte`, `Retro` and `Taglio`;
 - integrate device/card-printer progress/cancel behavior after the standard sheet workflow is stable.

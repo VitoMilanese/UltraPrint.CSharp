@@ -56,6 +56,18 @@ Implemented database/record workflow:
 
 That sidecar is intentional: unverified legacy bytes are not overwritten just to make a feature appear complete. Existing bindings recovered from legacy layouts continue to work, and the managed state can be migrated into native `.ly` bytes once the exact offsets are proven from a real database-bound legacy fixture.
 
+Implemented sequence/sheet-print workflow:
+
+- **Sequence -> Sequence / Sheet printing...** workspace with configurable rows/columns and first-slot selection.
+- Native `MargineDestro` is recovered as the left-origin X offset used by `StampaPagina`; `MargineAlto` is the top offset.
+- Native `PassoOrizzontale` / `PassoVerticale` are inter-card gaps, not full slot pitch.
+- Recovered `Orizzontale` row-major and `Verticale` column-major record fill.
+- Front, Back and Front + Back sequence output, current/all logical sheet preview/print, cut marks and Windows Page Setup.
+- Database-record imposition reuses the same query/table/binding state as Database / Records; template-only repeated-card mode is also available.
+- Legacy `[Sequenza]` `.Seq` setup persistence is supported for the proven controls while unknown keys are preserved.
+- Script-visible `Sequenza` / `Stampa` aliases expose recovered `Pescarecord`, `PosizionaPagina`, `ScriviSetup` and `LeggiSetup` behavior.
+- Managed `.sequence.json` v2 preserves managed-only state and migrates v1 full-pitch values to recovered native gap semantics without changing physical placement.
+
 Implemented operator/security compatibility layer:
 
 - Recovered original lookup order: `Db\Operatori.FFM`, then root `Operatori.FFM`.
@@ -94,7 +106,7 @@ Implemented scripting compatibility foundation:
 
 This scripting layer remains intentionally partial. The main remaining compatibility gap is the callable member surface behind `Carta`, `Mainform`, database/table, sequence/print and device objects, plus production-safe automatic layout lifecycle integration and exact error-438 editor remapping. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md) and [`docs/SCRIPT_OBJECT_MODEL.md`](docs/SCRIPT_OBJECT_MODEL.md).
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, `Sequenza` sheet imposition, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, remaining sequence paper-origin/orientation and duplex details, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -112,7 +124,7 @@ Compatibility smoke tests:
 dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.CompatibilityTests.csproj -c Release
 ```
 
-## Try the editor, records, security and scripts
+## Try the editor, records, sequence, security and scripts
 
 1. Build and run `UltraPrint.WinForms`.
 2. Use **File -> Open layout (.ly)...** and open `samples\legacy\TPMFAO19\TPMFAO19.ly` or a real layout from an original UltraPrint `LY` directory.
@@ -121,9 +133,10 @@ dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.Compatibilit
 5. Use **Database -> Database / Records...** to open an `.mdb`, `.ffm`, `.dbf`, `.xls/.xlsx`, `.csv`, `.txt` or `.dat` source.
 6. Open a table or run SQL, bind card fields to database columns, and navigate records while watching the card preview update.
 7. Print/preview the current record or all loaded records.
-8. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
-9. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered; interactive legacy macros use the managed prompt/file/folder/computer dialogs.
-10. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
+8. Use **Sequence -> Sequence / Sheet printing...** to arrange records or template copies on sheets; choose Horizontal/Vertical fill, X/top offsets and `Passo` gaps, then preview or print the current/all logical sheets.
+9. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
+10. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered; interactive legacy macros use the managed prompt/file/folder/computer dialogs.
+11. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
 
 ## CLI
 
@@ -138,4 +151,4 @@ dotnet run --project tools/UltraPrint.RecoveryCli -- startup-plan "C:\Program Fi
 
 Only behavior proven from binary metadata/native flow or real legacy data is treated as a confirmed compatibility contract. Unknown `.ly` bytes remain preserved rather than guessed. A workflow is marked complete only when it actually works against legacy inputs; placeholder menu items do not count.
 
-See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md` and `docs/SCRIPT_OBJECT_MODEL.md` for the recovered structures and confidence level.
+See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md` and `docs/SEQUENCE_COMPATIBILITY.md` for the recovered structures and confidence level.

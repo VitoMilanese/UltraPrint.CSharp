@@ -5,11 +5,10 @@ using UltraPrint.Legacy.Configuration;
 namespace UltraPrint.Legacy.Data;
 
 /// <summary>
-/// Partial, conservative compatibility layer for the legacy Sequenza *.Seq files.
+/// Conservative compatibility layer for the legacy Sequenza *.Seq files.
 /// Native ScriviSetup/LeggiSetup enumerate form controls and persist them in the
-/// [Sequenza] INI section. Only control names with an unambiguous managed equivalent
-/// are mapped here; unknown keys (and still-unresolved controls such as MargineDestro)
-/// are preserved verbatim on save.
+/// [Sequenza] INI section. Only control names with a proven managed equivalent are
+/// mapped here; unknown keys are preserved verbatim on save.
 /// </summary>
 public static class LegacySequenceIniStore
 {
@@ -21,9 +20,12 @@ public static class LegacySequenceIniStore
     [
         "Righe",
         "Colonne",
+        "MargineDestro",
         "MargineAlto",
         "PassoOrizzontale",
         "PassoVerticale",
+        "Orizzontale",
+        "Verticale",
         "PaginaSingola"
     ];
 
@@ -58,13 +60,28 @@ public static class LegacySequenceIniStore
         var ini = LegacyIniDocument.Load(path);
         result.Rows = ReadInt(ini, "Righe", result.Rows, 1, 100);
         result.Columns = ReadInt(ini, "Colonne", result.Columns, 1, 100);
+
+        // Native StampaPagina adds MargineDestro to MSFlexGrid.CellLeft. The
+        // misleading control name therefore represents a left-origin X offset.
+        result.MarginLeftMm = ReadDouble(ini, "MargineDestro", result.MarginLeftMm, 0, 1000);
         result.MarginTopMm = ReadDouble(ini, "MargineAlto", result.MarginTopMm, 0, 1000);
+
+        // Passo* is the inter-card gap. Card width/height is supplied separately by
+        // MSFlexGrid.CellLeft/CellTop and must not be folded into these values.
         result.HorizontalPitchMm = ReadDouble(ini, "PassoOrizzontale", result.HorizontalPitchMm, 0, 1000);
         result.VerticalPitchMm = ReadDouble(ini, "PassoVerticale", result.VerticalPitchMm, 0, 1000);
+
+        var horizontal = ReadOptionalCheckValue(ini, "Orizzontale");
+        var vertical = ReadOptionalCheckValue(ini, "Verticale");
+        if (horizontal == true && vertical != true)
+            result.FillDirection = SequenceFillDirection.Horizontal;
+        else if (vertical == true && horizontal != true)
+            result.FillDirection = SequenceFillDirection.Vertical;
+
         result.SinglePageMode = ReadCheckValue(ini, "PaginaSingola", result.SinglePageMode);
 
-        // MargineDestro, Fronte/Retro, orientation, Taglio and other native controls still
-        // need geometry/printing proof before they can safely mutate the managed model.
+        // Fronte/Retro, paper orientation, Taglio and other native controls still
+        // need printing/device proof before they can safely mutate the managed model.
         var capacity = Math.Max(1, result.Rows * result.Columns);
         if (result.StartSlot >= capacity) result.StartSlot = capacity - 1;
         result.Validate(layout.WidthMm, layout.HeightMm);
@@ -88,9 +105,12 @@ public static class LegacySequenceIniStore
 
         ini.Set(SectionName, "Righe", settings.Rows.ToString(CultureInfo.InvariantCulture));
         ini.Set(SectionName, "Colonne", settings.Columns.ToString(CultureInfo.InvariantCulture));
+        ini.Set(SectionName, "MargineDestro", FormatNumber(settings.MarginLeftMm));
         ini.Set(SectionName, "MargineAlto", FormatNumber(settings.MarginTopMm));
         ini.Set(SectionName, "PassoOrizzontale", FormatNumber(settings.HorizontalPitchMm));
         ini.Set(SectionName, "PassoVerticale", FormatNumber(settings.VerticalPitchMm));
+        ini.Set(SectionName, "Orizzontale", settings.FillDirection == SequenceFillDirection.Horizontal ? "1" : "0");
+        ini.Set(SectionName, "Verticale", settings.FillDirection == SequenceFillDirection.Vertical ? "1" : "0");
         ini.Set(SectionName, "PaginaSingola", settings.SinglePageMode ? "1" : "0");
         ini.Save(fullPath);
     }
@@ -104,14 +124,24 @@ public static class LegacySequenceIniStore
         return value < min || value > max ? fallback : value;
     }
 
-    private static bool ReadCheckValue(LegacyIniDocument ini, string key, bool fallback)
+    private static bool ReadCheckValue(LegacyIniDocument ini, string key, bool fallback) =>
+        ReadOptionalCheckValue(ini, key) ?? fallback;
+
+    private static bool? ReadOptionalCheckValue(LegacyIniDocument ini, string key)
     {
         var raw = ini.Get(SectionName, key);
-        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
         raw = raw.Trim();
         if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
             return value != 0;
-        return bool.TryParse(raw, out var boolean) ? boolean : fallback;
+        if (bool.TryParse(raw, out var boolean)) return boolean;
+        if (string.Equals(raw, "Vero", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(raw, "Si", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.Equals(raw, "Falso", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(raw, "No", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return null;
     }
 
     private static double ReadDouble(

@@ -45,8 +45,9 @@ internal static class SequenceScriptFacadeCompatibilityTests
                 Columns = 4,
                 MarginLeftMm = 22,
                 MarginTopMm = 8.25,
-                HorizontalPitchMm = 87.5,
-                VerticalPitchMm = 56.75,
+                HorizontalPitchMm = 2.5,
+                VerticalPitchMm = 2.75,
+                FillDirection = SequenceFillDirection.Vertical,
                 StartSlot = 2,
                 Side = LayoutSide.Back,
                 SinglePageMode = true,
@@ -57,12 +58,14 @@ internal static class SequenceScriptFacadeCompatibilityTests
             var ini = LegacyIniDocument.Load(path);
             AssertEqual("3", ini.Get("Sequenza", "Righe")!, "legacy .Seq Righe");
             AssertEqual("4", ini.Get("Sequenza", "Colonne")!, "legacy .Seq Colonne");
+            AssertEqual("22", ini.Get("Sequenza", "MargineDestro")!, "legacy .Seq native X offset");
             AssertEqual("8,25", ini.Get("Sequenza", "MargineAlto")!, "legacy .Seq Italian decimal margin");
-            AssertEqual("87,5", ini.Get("Sequenza", "PassoOrizzontale")!, "legacy .Seq horizontal pitch");
-            AssertEqual("56,75", ini.Get("Sequenza", "PassoVerticale")!, "legacy .Seq vertical pitch");
+            AssertEqual("2,5", ini.Get("Sequenza", "PassoOrizzontale")!, "legacy .Seq horizontal Passo gap");
+            AssertEqual("2,75", ini.Get("Sequenza", "PassoVerticale")!, "legacy .Seq vertical Passo gap");
+            AssertEqual("0", ini.Get("Sequenza", "Orizzontale")!, "legacy .Seq horizontal option");
+            AssertEqual("1", ini.Get("Sequenza", "Verticale")!, "legacy .Seq vertical option");
             AssertEqual("1", ini.Get("Sequenza", "PaginaSingola")!, "legacy .Seq PaginaSingola");
             AssertEqual("KEEP", ini.Get("Sequenza", "CustomLegacyKey")!, "unknown legacy .Seq key preserved");
-            AssertEqual("17,5", ini.Get("Sequenza", "MargineDestro")!, "unresolved right-margin key preserved");
 
             var baseline = new SequencePrintSettings
             {
@@ -70,8 +73,9 @@ internal static class SequenceScriptFacadeCompatibilityTests
                 Columns = 1,
                 MarginLeftMm = 33,
                 MarginTopMm = 1,
-                HorizontalPitchMm = 85,
-                VerticalPitchMm = 54,
+                HorizontalPitchMm = 0,
+                VerticalPitchMm = 0,
+                FillDirection = SequenceFillDirection.Horizontal,
                 StartSlot = 0,
                 Side = LayoutSide.Back,
                 DrawCutMarks = true
@@ -79,11 +83,12 @@ internal static class SequenceScriptFacadeCompatibilityTests
             var loaded = LegacySequenceIniStore.Load(path, layout, baseline);
             AssertEqual(3, loaded.Rows, "legacy .Seq loads Righe");
             AssertEqual(4, loaded.Columns, "legacy .Seq loads Colonne");
+            AssertNearly(22, loaded.MarginLeftMm, 0.0001, "legacy .Seq loads MargineDestro as left-origin X offset");
             AssertNearly(8.25, loaded.MarginTopMm, 0.0001, "legacy .Seq loads MargineAlto");
-            AssertNearly(87.5, loaded.HorizontalPitchMm, 0.0001, "legacy .Seq loads horizontal pitch");
-            AssertNearly(56.75, loaded.VerticalPitchMm, 0.0001, "legacy .Seq loads vertical pitch");
+            AssertNearly(2.5, loaded.HorizontalPitchMm, 0.0001, "legacy .Seq loads horizontal Passo gap");
+            AssertNearly(2.75, loaded.VerticalPitchMm, 0.0001, "legacy .Seq loads vertical Passo gap");
+            AssertEqual(SequenceFillDirection.Vertical, loaded.FillDirection, "legacy .Seq loads Verticale column-major mode");
             AssertTrue(loaded.SinglePageMode, "legacy .Seq loads PaginaSingola");
-            AssertNearly(33, loaded.MarginLeftMm, 0.0001, "unresolved MargineDestro does not corrupt managed left margin");
             AssertEqual(LayoutSide.Back, loaded.Side, "unresolved legacy side controls preserve managed baseline");
             AssertTrue(loaded.DrawCutMarks, "unresolved legacy Taglio preserves managed baseline");
         }

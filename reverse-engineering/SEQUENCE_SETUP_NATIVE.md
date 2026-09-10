@@ -1,6 +1,6 @@
 # Sequenza ScriptControl / legacy .Seq recovery note
 
-This compatibility slice is implemented in `LegacyScriptSequenceFacade`, `LegacyScriptSequenceHostRegistry`, `LegacySequenceIniStore`, `LegacyQbeMatcher`, `WinFormsLegacySequenceHost`, and the shared WinForms database host.
+This compatibility slice is implemented in `LegacyScriptSequenceFacade`, `LegacyScriptSequenceHostRegistry`, `LegacySequenceIniStore`, `LegacyQbeMatcher`, `WinFormsLegacySequenceHost`, the managed `SequencePrintPlanner`, and the shared WinForms database host.
 
 Native facts used by the implementation:
 
@@ -24,8 +24,41 @@ Native facts used by the implementation:
 - setup persistence is INI-style, section `[Sequenza]`; native code enumerates controls and uses their `Name` plus `Value`/`Text` with `File.WriteIni` / `File.GetIni`.
 - the same global `Sequenza` object is injected into ScriptControl as both `Sequenza` and `Stampa`.
 
-The managed `Pescarecord` implementation now reproduces the proven observable contract: compact QBE field/operator/value input, first-match search, one-based result/zero failure shape, `Record non trovato`, and movement of the shared Database/Records `BindingSource` so subsequent `Tabella`/record-binding calls observe the found row. `LegacyQbeMatcher` keeps the recovered operator tokens while evaluating loaded `DataTable` values, which also extends the workflow to managed CSV/text sources that do not expose a DAO Recordset.
+## Recovered sheet geometry
 
-The managed `.Seq` reader/writer maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, and `PaginaSingola`. Existing unknown keys are preserved. In particular, `MargineDestro` is not guessed to mean the managed left-origin margin.
+The control IDs and native object getters correlate the relevant form controls as follows:
+
+- `MargineDestro` -> control id 21 / getter vtable `+0x34C`;
+- `MargineAlto` -> id 22 / `+0x350`;
+- `PassoOrizzontale` -> id 23 / `+0x354`;
+- `PassoVerticale` -> id 24 / `+0x358`;
+- `Orizzontale` -> id 67 / `+0x404`;
+- `Verticale` -> id 68 / `+0x408`;
+- `FoglioPortrait` -> id 70 / `+0x410`;
+- `FoglioLandscape` -> id 71 / `+0x414`;
+- `MSFlexGrid1` -> id 75 / `+0x424`.
+
+The MSFlexGrid DISPIDs observed by the binary match the control typelib: `Rows=4`, `Cols=5`, `Row=10`, `Col=11`, `CellLeft=29`, `CellTop=30`, `CellWidth=31`, `CellHeight=32`, `ColWidth=57`, `RowHeight=58`.
+
+`cmdImposta_Click` sizes the grid cells from the card dimensions. It then builds separate X/Y spacing arrays. The first X element is `MargineDestro * 10` and the first Y element is `MargineAlto * 10`; later X/Y elements are `PassoOrizzontale * 10` / `PassoVerticale * 10`. `StampaPagina_Click` sums those arrays up to the current grid cell, divides by 10, and adds the result to `MSFlexGrid.CellLeft` / `CellTop` before passing the final coordinates to the print/draw helper.
+
+Therefore the native placement is equivalent to:
+
+```text
+X = MargineDestro + column * (cardWidth + PassoOrizzontale)
+Y = MargineAlto  + row    * (cardHeight + PassoVerticale)
+```
+
+This proves that `MargineDestro`, despite its label, behaves as a left-origin X offset in the actual print path. It also proves that `PassoOrizzontale` / `PassoVerticale` are inter-card gaps, not full pitch values.
+
+The `Orizzontale` and `Verticale` branches in `cmdImposta_Click` select traversal order rather than card rotation: `Orizzontale` is row-major and `Verticale` is column-major. `FoglioPortrait` / `FoglioLandscape` are a separate paper-orientation pair and remain intentionally separate from fill direction.
+
+## Managed consequences
+
+The managed `Pescarecord` implementation reproduces the proven observable contract: compact QBE field/operator/value input, first-match search, one-based result/zero failure shape, `Record non trovato`, and movement of the shared Database/Records `BindingSource` so subsequent `Tabella`/record-binding calls observe the found row. `LegacyQbeMatcher` keeps the recovered operator tokens while evaluating loaded `DataTable` values, which also extends the workflow to managed CSV/text sources that do not expose a DAO Recordset.
 
 The managed `PosizionaPagina` implementation exposes the recovered script method, uses a pure `LegacySequencePositioning` helper for the literal native arithmetic/clamping, drives the currently open managed Sequence workspace, and mirrors the native MSFlexGrid match with a red/bold record highlight.
+
+`LegacySequenceIniStore` now maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, `Orizzontale`, `Verticale`, and `PaginaSingola`. Unknown keys remain preserved. `Fronte`/`Retro`, `Taglio`, paper orientation and remaining device-specific setup stay unresolved until their exact output effects are proven.
+
+The managed planner uses `MargineDestro` as the X offset, treats `Passo*` as gaps, and supports both recovered fill orders. Managed `.sequence.json` version 2 stores this corrected interpretation; version 1 full-pitch values are migrated to gaps by subtracting the card width/height so existing managed layouts keep the same physical placement.

@@ -1,5 +1,11 @@
 namespace UltraPrint.Core.Models;
 
+public enum SequenceFillDirection
+{
+    Horizontal = 0,
+    Vertical = 1
+}
+
 /// <summary>
 /// Managed model for the recovered Sequenza sheet-imposition workflow. Values are
 /// stored in millimetres because the legacy editor and card model are millimetre-
@@ -9,10 +15,29 @@ public sealed class SequencePrintSettings
 {
     public int Rows { get; set; } = 5;
     public int Columns { get; set; } = 2;
+
+    /// <summary>
+    /// Left-origin X offset used by the native MargineDestro control. Despite the
+    /// control name, native StampaPagina adds this value to MSFlexGrid.CellLeft.
+    /// </summary>
     public double MarginLeftMm { get; set; } = 10;
+
     public double MarginTopMm { get; set; } = 10;
+
+    /// <summary>
+    /// Native PassoOrizzontale: the gap between adjacent card columns, not the
+    /// complete centre/edge-to-edge pitch. The property name is retained so old
+    /// managed .sequence.json files can be migrated without losing data.
+    /// </summary>
     public double HorizontalPitchMm { get; set; }
+
+    /// <summary>
+    /// Native PassoVerticale: the gap between adjacent card rows, not the complete
+    /// pitch. The property name is retained for managed sidecar compatibility.
+    /// </summary>
     public double VerticalPitchMm { get; set; }
+
+    public SequenceFillDirection FillDirection { get; set; } = SequenceFillDirection.Horizontal;
     public int StartSlot { get; set; }
     public LayoutSide Side { get; set; } = LayoutSide.Front;
     public bool DrawCutMarks { get; set; }
@@ -26,10 +51,10 @@ public sealed class SequencePrintSettings
     public int Capacity => checked(Rows * Columns);
 
     public double EffectiveHorizontalPitchMm(double cardWidthMm) =>
-        HorizontalPitchMm > 0 ? HorizontalPitchMm : cardWidthMm;
+        cardWidthMm + HorizontalPitchMm;
 
     public double EffectiveVerticalPitchMm(double cardHeightMm) =>
-        VerticalPitchMm > 0 ? VerticalPitchMm : cardHeightMm;
+        cardHeightMm + VerticalPitchMm;
 
     public void Validate(double cardWidthMm, double cardHeightMm)
     {
@@ -39,6 +64,8 @@ public sealed class SequencePrintSettings
         if (HorizontalPitchMm < 0 || VerticalPitchMm < 0) throw new ArgumentOutOfRangeException(nameof(HorizontalPitchMm));
         if (cardWidthMm <= 0 || cardHeightMm <= 0) throw new ArgumentOutOfRangeException(nameof(cardWidthMm));
         if (StartSlot < 0 || StartSlot >= Capacity) throw new ArgumentOutOfRangeException(nameof(StartSlot));
+        if (!Enum.IsDefined(typeof(SequenceFillDirection), FillDirection))
+            throw new ArgumentOutOfRangeException(nameof(FillDirection));
     }
 
     public SequencePrintSettings Clone() => new()
@@ -49,6 +76,7 @@ public sealed class SequencePrintSettings
         MarginTopMm = MarginTopMm,
         HorizontalPitchMm = HorizontalPitchMm,
         VerticalPitchMm = VerticalPitchMm,
+        FillDirection = FillDirection,
         StartSlot = StartSlot,
         Side = Side,
         DrawCutMarks = DrawCutMarks,
@@ -105,8 +133,8 @@ public static class LegacySequencePositioning
 
 /// <summary>
 /// Pure placement engine behind the managed Sequenza replacement. The first sheet
-/// can begin at a selected slot (matching the legacy grid workflow); subsequent
-/// sheets always start at slot zero. Records are filled row-major.
+/// can begin at a selected physical slot; subsequent sheets always begin at the
+/// first slot in the selected native Orizzontale/Verticale traversal order.
 /// </summary>
 public static class SequencePrintPlanner
 {
@@ -114,10 +142,15 @@ public static class SequencePrintPlanner
     {
         ArgumentNullException.ThrowIfNull(settings);
         if (recordCount <= 0) return 0;
-        var firstCapacity = settings.Capacity - settings.StartSlot;
+
+        var capacity = settings.Capacity;
+        if (settings.StartSlot < 0 || settings.StartSlot >= capacity)
+            throw new ArgumentOutOfRangeException(nameof(settings.StartSlot));
+        var firstTraversalIndex = GetTraversalIndex(settings.StartSlot, settings);
+        var firstCapacity = capacity - firstTraversalIndex;
         if (recordCount <= firstCapacity) return 1;
         var remaining = recordCount - firstCapacity;
-        return 1 + (remaining + settings.Capacity - 1) / settings.Capacity;
+        return 1 + (remaining + capacity - 1) / capacity;
     }
 
     public static IReadOnlyList<SequenceSlotPlacement> GetSheetPlacements(
@@ -134,10 +167,11 @@ public static class SequencePrintPlanner
         if (sheetIndex < 0 || sheetIndex >= sheetCount) throw new ArgumentOutOfRangeException(nameof(sheetIndex));
 
         var capacity = settings.Capacity;
-        var firstCapacity = capacity - settings.StartSlot;
+        var firstTraversalIndex = GetTraversalIndex(settings.StartSlot, settings);
+        var firstCapacity = capacity - firstTraversalIndex;
         var startRecord = sheetIndex == 0 ? 0 : firstCapacity + (sheetIndex - 1) * capacity;
-        var firstSlot = sheetIndex == 0 ? settings.StartSlot : 0;
-        var available = capacity - firstSlot;
+        var traversalStart = sheetIndex == 0 ? firstTraversalIndex : 0;
+        var available = capacity - traversalStart;
         var count = Math.Min(available, recordCount - startRecord);
         var pitchX = settings.EffectiveHorizontalPitchMm(cardWidthMm);
         var pitchY = settings.EffectiveVerticalPitchMm(cardHeightMm);
@@ -145,9 +179,9 @@ public static class SequencePrintPlanner
         var result = new List<SequenceSlotPlacement>(count);
         for (var i = 0; i < count; i++)
         {
-            var slot = firstSlot + i;
-            var row = slot / settings.Columns;
-            var column = slot % settings.Columns;
+            var traversalIndex = traversalStart + i;
+            var (row, column) = GetCell(traversalIndex, settings);
+            var slot = checked(row * settings.Columns + column);
             result.Add(new SequenceSlotPlacement(
                 sheetIndex,
                 slot,
@@ -175,4 +209,26 @@ public static class SequencePrintPlanner
             settings.MarginLeftMm + (settings.Columns - 1) * pitchX + cardWidthMm,
             settings.MarginTopMm + (settings.Rows - 1) * pitchY + cardHeightMm);
     }
+
+    private static int GetTraversalIndex(int slot, SequencePrintSettings settings)
+    {
+        var row = slot / settings.Columns;
+        var column = slot % settings.Columns;
+        return settings.FillDirection switch
+        {
+            SequenceFillDirection.Horizontal => slot,
+            SequenceFillDirection.Vertical => checked(column * settings.Rows + row),
+            _ => throw new ArgumentOutOfRangeException(nameof(settings.FillDirection))
+        };
+    }
+
+    private static (int Row, int Column) GetCell(int traversalIndex, SequencePrintSettings settings) =>
+        settings.FillDirection switch
+        {
+            SequenceFillDirection.Horizontal =>
+                (traversalIndex / settings.Columns, traversalIndex % settings.Columns),
+            SequenceFillDirection.Vertical =>
+                (traversalIndex % settings.Rows, traversalIndex / settings.Rows),
+            _ => throw new ArgumentOutOfRangeException(nameof(settings.FillDirection))
+        };
 }

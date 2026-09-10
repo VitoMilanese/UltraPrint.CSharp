@@ -18,8 +18,9 @@ internal sealed class SequenceWorkspaceForm : Form
     private readonly NumericUpDown _columns = Number(1, 100, 2, 0);
     private readonly NumericUpDown _marginLeft = Number(0, 1000, 10, 2);
     private readonly NumericUpDown _marginTop = Number(0, 1000, 10, 2);
-    private readonly NumericUpDown _pitchX = Number(0, 1000, 85, 2);
-    private readonly NumericUpDown _pitchY = Number(0, 1000, 54, 2);
+    private readonly NumericUpDown _pitchX = Number(0, 1000, 0, 2);
+    private readonly NumericUpDown _pitchY = Number(0, 1000, 0, 2);
+    private readonly ComboBox _fillDirection = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly NumericUpDown _startSlot = Number(1, 10000, 1, 0);
     private readonly NumericUpDown _copies = Number(1, 10000, 1, 0);
     private readonly ComboBox _side = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
@@ -46,6 +47,7 @@ internal sealed class SequenceWorkspaceForm : Form
         MinimumSize = new Size(900, 620);
         StartPosition = FormStartPosition.CenterParent;
 
+        _fillDirection.Items.AddRange(new object[] { "Horizontal (row-major)", "Vertical (column-major)" });
         _side.Items.AddRange(new object[] { "Front", "Back", "Front + Back" });
         Controls.Add(BuildUi());
         var statusStrip = new StatusStrip();
@@ -67,7 +69,7 @@ internal sealed class SequenceWorkspaceForm : Form
             ColumnCount = 2,
             RowCount = 2
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 330));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 370));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
@@ -87,7 +89,7 @@ internal sealed class SequenceWorkspaceForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             ColumnCount = 2,
-            RowCount = 16,
+            RowCount = 17,
             Padding = new Padding(4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
@@ -100,10 +102,11 @@ internal sealed class SequenceWorkspaceForm : Form
         row++;
         AddSetting(panel, ref row, "Rows:", _rows);
         AddSetting(panel, ref row, "Columns:", _columns);
-        AddSetting(panel, ref row, "Left margin (mm):", _marginLeft);
+        AddSetting(panel, ref row, "X offset / MargineDestro (mm):", _marginLeft);
         AddSetting(panel, ref row, "Top margin (mm):", _marginTop);
-        AddSetting(panel, ref row, "Horizontal pitch (mm):", _pitchX);
-        AddSetting(panel, ref row, "Vertical pitch (mm):", _pitchY);
+        AddSetting(panel, ref row, "Horizontal gap / Passo (mm):", _pitchX);
+        AddSetting(panel, ref row, "Vertical gap / Passo (mm):", _pitchY);
+        AddSetting(panel, ref row, "Fill direction:", _fillDirection);
         AddSetting(panel, ref row, "First slot:", _startSlot);
         AddSetting(panel, ref row, "Side:", _side);
         panel.Controls.Add(_cutMarks, 1, row++);
@@ -180,6 +183,7 @@ internal sealed class SequenceWorkspaceForm : Form
     {
         foreach (var numeric in new[] { _rows, _columns, _marginLeft, _marginTop, _pitchX, _pitchY, _startSlot })
             numeric.ValueChanged += (_, _) => SettingsChanged();
+        _fillDirection.SelectedIndexChanged += (_, _) => SettingsChanged();
         _side.SelectedIndexChanged += (_, _) => SettingsChanged();
         _cutMarks.CheckedChanged += (_, _) => SettingsChanged();
         _copies.ValueChanged += (_, _) =>
@@ -206,8 +210,9 @@ internal sealed class SequenceWorkspaceForm : Form
             _columns.Value = Clamp(_settings.Columns, _columns);
             _marginLeft.Value = Clamp((decimal)_settings.MarginLeftMm, _marginLeft);
             _marginTop.Value = Clamp((decimal)_settings.MarginTopMm, _marginTop);
-            _pitchX.Value = Clamp((decimal)_settings.EffectiveHorizontalPitchMm(_layout.WidthMm), _pitchX);
-            _pitchY.Value = Clamp((decimal)_settings.EffectiveVerticalPitchMm(_layout.HeightMm), _pitchY);
+            _pitchX.Value = Clamp((decimal)_settings.HorizontalPitchMm, _pitchX);
+            _pitchY.Value = Clamp((decimal)_settings.VerticalPitchMm, _pitchY);
+            _fillDirection.SelectedIndex = _settings.FillDirection == SequenceFillDirection.Vertical ? 1 : 0;
             UpdateStartSlotMaximum();
             _startSlot.Value = Clamp(_settings.StartSlot + 1, _startSlot);
             _side.SelectedIndex = _settings.Side switch
@@ -239,6 +244,9 @@ internal sealed class SequenceWorkspaceForm : Form
             _settings.MarginTopMm = (double)_marginTop.Value;
             _settings.HorizontalPitchMm = (double)_pitchX.Value;
             _settings.VerticalPitchMm = (double)_pitchY.Value;
+            _settings.FillDirection = _fillDirection.SelectedIndex == 1
+                ? SequenceFillDirection.Vertical
+                : SequenceFillDirection.Horizontal;
             _settings.StartSlot = (int)_startSlot.Value - 1;
             _settings.Side = _side.SelectedIndex switch
             {
