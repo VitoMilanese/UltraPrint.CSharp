@@ -4,7 +4,7 @@ namespace UltraPrint.WinForms;
 
 /// <summary>
 /// Interactive managed replacement for the legacy Sequenza page/grid preview.
-/// Clicking a slot chooses where the first record is placed on the first sheet.
+/// Clicking a slot on the first logical sheet chooses where record 1 starts.
 /// </summary>
 internal sealed class SequenceSheetPreviewControl : Control
 {
@@ -14,6 +14,7 @@ internal sealed class SequenceSheetPreviewControl : Control
     private double _pageWidthMm = 210;
     private double _pageHeightMm = 297;
     private int _recordCount;
+    private int _sheetIndex;
 
     public SequenceSheetPreviewControl()
     {
@@ -53,6 +54,12 @@ internal sealed class SequenceSheetPreviewControl : Control
         set { _recordCount = Math.Max(0, value); Invalidate(); }
     }
 
+    public int SheetIndex
+    {
+        get => _sheetIndex;
+        set { _sheetIndex = Math.Max(0, value); Invalidate(); }
+    }
+
     public event Action<int>? StartSlotSelected;
 
     protected override void OnPaint(PaintEventArgs e)
@@ -78,10 +85,14 @@ internal sealed class SequenceSheetPreviewControl : Control
         e.Graphics.FillRectangle(SystemBrushes.Window, page);
         e.Graphics.DrawRectangle(SystemPens.ControlDarkDark, page.X, page.Y, page.Width, page.Height);
 
+        IReadOnlyList<SequenceSlotPlacement> placements = Array.Empty<SequenceSlotPlacement>();
+        var sheetCount = SequencePrintPlanner.GetSheetCount(_recordCount, _settings);
+        if (_recordCount > 0 && _sheetIndex < sheetCount)
+            placements = SequencePrintPlanner.GetSheetPlacements(
+                _recordCount, _layout.WidthMm, _layout.HeightMm, _settings, _sheetIndex);
+        var placementBySlot = placements.ToDictionary(x => x.SlotIndex);
         var pitchX = _settings.EffectiveHorizontalPitchMm(_layout.WidthMm);
         var pitchY = _settings.EffectiveVerticalPitchMm(_layout.HeightMm);
-        var firstSheetCapacity = Math.Max(0, _settings.Capacity - _settings.StartSlot);
-        var firstSheetRecords = Math.Min(_recordCount, firstSheetCapacity);
 
         for (var slot = 0; slot < _settings.Capacity; slot++)
         {
@@ -94,11 +105,9 @@ internal sealed class SequenceSheetPreviewControl : Control
                 (float)(_layout.HeightMm * scale));
             _slotBounds.Add((slot, r));
 
-            var beforeStart = slot < _settings.StartSlot;
-            var recordOffset = slot - _settings.StartSlot;
-            var occupied = !beforeStart && recordOffset >= 0 && recordOffset < firstSheetRecords;
-
-            if (slot == _settings.StartSlot)
+            var isStart = _sheetIndex == 0 && slot == _settings.StartSlot;
+            var occupied = placementBySlot.TryGetValue(slot, out var placement);
+            if (isStart)
                 e.Graphics.FillRectangle(SystemBrushes.Highlight, r);
             else if (occupied)
                 e.Graphics.FillRectangle(SystemBrushes.ControlLight, r);
@@ -106,9 +115,8 @@ internal sealed class SequenceSheetPreviewControl : Control
                 e.Graphics.FillRectangle(SystemBrushes.Window, r);
 
             e.Graphics.DrawRectangle(SystemPens.ControlDarkDark, r.X, r.Y, r.Width, r.Height);
-
-            var label = occupied ? $"{slot + 1}\nR{recordOffset + 1}" : (slot + 1).ToString();
-            var textColor = slot == _settings.StartSlot ? SystemColors.HighlightText : SystemColors.ControlText;
+            var label = occupied ? $"{slot + 1}\nR{placement.RecordIndex + 1}" : (slot + 1).ToString();
+            var textColor = isStart ? SystemColors.HighlightText : SystemColors.ControlText;
             TextRenderer.DrawText(
                 e.Graphics,
                 label,
@@ -122,7 +130,7 @@ internal sealed class SequenceSheetPreviewControl : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left) return;
+        if (e.Button != MouseButtons.Left || _sheetIndex != 0) return;
         var hit = _slotBounds.FirstOrDefault(x => x.Bounds.Contains(e.Location));
         if (hit.Bounds == RectangleF.Empty) return;
         StartSlotSelected?.Invoke(hit.Slot);
