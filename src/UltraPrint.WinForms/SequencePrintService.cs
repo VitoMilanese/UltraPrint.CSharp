@@ -146,6 +146,8 @@ public sealed class SequencePrintService
         if (records.Count == 0) throw new InvalidOperationException("There are no records to impose on the sheet.");
         settings.Validate(layout.WidthMm, layout.HeightMm);
 
+        // SoloFronte / FronteRetro / SoloRetro are encoded by Side. Fronte/Retro
+        // are transient native phase toggles and are not persisted as the mode.
         var sides = settings.Side == LayoutSide.Unknown
             ? new[] { LayoutSide.Front, LayoutSide.Back }
             : new[] { settings.Side };
@@ -191,6 +193,12 @@ public sealed class SequencePrintService
 
             foreach (var placement in placements)
             {
+                var outputPlacement = SequencePrintPlanner.TransformForSide(
+                    placement,
+                    layout.WidthMm,
+                    layout.HeightMm,
+                    settings,
+                    side);
                 var bound = LegacyRecordBinder.CreateBoundLayout(layout, records[placement.RecordIndex], bindings);
                 using var renderer = new LayoutCanvas
                 {
@@ -200,7 +208,7 @@ public sealed class SequencePrintService
                     ShowGrid = false
                 };
 
-                var target = MmRectangleToPixels(placement, graphics);
+                var target = MmRectangleToPixels(outputPlacement, graphics);
                 renderer.RenderTo(graphics, target, side);
                 if (settings.DrawCutMarks) DrawCutMarks(graphics, target);
             }

@@ -22,12 +22,16 @@ internal sealed class SequenceWorkspaceForm : Form
     private readonly NumericUpDown _pitchX = Number(0, 1000, 0, 2);
     private readonly NumericUpDown _pitchY = Number(0, 1000, 0, 2);
     private readonly ComboBox _fillDirection = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+    private readonly CheckBox _cutStack = new() { AutoSize = true, Text = "Cut-and-stack / Taglio" };
     private readonly ComboBox _paperFormat = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly ComboBox _paperOrientation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly NumericUpDown _startSlot = Number(1, 10000, 1, 0);
     private readonly NumericUpDown _copies = Number(1, 10000, 1, 0);
     private readonly ComboBox _side = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-    private readonly CheckBox _cutMarks = new() { AutoSize = true, Text = "Draw cut marks" };
+    private readonly CheckBox _mirrorBack = new() { AutoSize = true, Text = "Mirror back slots / RetroaSpecchio" };
+    private readonly NumericUpDown _backOffsetX = Number(-1000, 1000, 0, 2);
+    private readonly NumericUpDown _backOffsetY = Number(-1000, 1000, 0, 2);
+    private readonly CheckBox _cutMarks = new() { AutoSize = true, Text = "Managed crop marks (non-legacy)" };
     private readonly CheckBox _useDatabase = new() { AutoSize = true, Text = "Use database records", Checked = true };
     private readonly Label _dataStatus = new() { Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Label _pageLabel = new() { AutoSize = true, TextAlign = ContentAlignment.MiddleCenter };
@@ -45,15 +49,20 @@ internal sealed class SequenceWorkspaceForm : Form
         _bindings = new Dictionary<int, string>(ManagedBindingStore.LoadState(layout).Bindings);
 
         Text = $"UltraPrint Sequence / Sheet printing — {layout.Name}";
-        Width = 1180;
-        Height = 790;
-        MinimumSize = new Size(900, 620);
+        Width = 1200;
+        Height = 820;
+        MinimumSize = new Size(920, 650);
         StartPosition = FormStartPosition.CenterParent;
 
         _fillDirection.Items.AddRange(new object[] { "Horizontal (row-major)", "Vertical (column-major)" });
         _paperOrientation.Items.AddRange(new object[] { "Portrait", "Landscape" });
         LoadLegacyPaperFormats();
-        _side.Items.AddRange(new object[] { "Front", "Back", "Front + Back" });
+        _side.Items.AddRange(new object[]
+        {
+            "Front only (SoloFronte)",
+            "Back only (SoloRetro)",
+            "Front + Back (FronteRetro)"
+        });
         Controls.Add(BuildUi());
         var statusStrip = new StatusStrip();
         statusStrip.Items.Add(_status);
@@ -74,7 +83,7 @@ internal sealed class SequenceWorkspaceForm : Form
             ColumnCount = 2,
             RowCount = 2
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 370));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 390));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
@@ -94,7 +103,7 @@ internal sealed class SequenceWorkspaceForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             ColumnCount = 2,
-            RowCount = 19,
+            RowCount = 23,
             Padding = new Padding(4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
@@ -112,10 +121,14 @@ internal sealed class SequenceWorkspaceForm : Form
         AddSetting(panel, ref row, "Horizontal gap / Passo (mm):", _pitchX);
         AddSetting(panel, ref row, "Vertical gap / Passo (mm):", _pitchY);
         AddSetting(panel, ref row, "Fill direction:", _fillDirection);
+        panel.Controls.Add(_cutStack, 1, row++);
         AddSetting(panel, ref row, "Legacy sheet format:", _paperFormat);
         AddSetting(panel, ref row, "Paper orientation:", _paperOrientation);
         AddSetting(panel, ref row, "First slot:", _startSlot);
-        AddSetting(panel, ref row, "Side:", _side);
+        AddSetting(panel, ref row, "Print mode:", _side);
+        panel.Controls.Add(_mirrorBack, 1, row++);
+        AddSetting(panel, ref row, "Back offset X (mm):", _backOffsetX);
+        AddSetting(panel, ref row, "Back offset Y (mm):", _backOffsetY);
         panel.Controls.Add(_cutMarks, 1, row++);
 
         var recordHeader = Header("Records");
@@ -157,7 +170,7 @@ internal sealed class SequenceWorkspaceForm : Form
         {
             Dock = DockStyle.Bottom,
             Height = 28,
-            Text = "Click a slot on sheet 1 to choose where the first record starts.",
+            Text = "Click a slot on sheet 1 to choose where record 1 starts. SoloRetro preview shows RetroaSpecchio slot assignment.",
             TextAlign = ContentAlignment.MiddleCenter
         };
         panel.Controls.Add(_preview);
@@ -188,12 +201,18 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void WireEvents()
     {
-        foreach (var numeric in new[] { _rows, _columns, _marginLeft, _marginTop, _pitchX, _pitchY, _startSlot })
+        foreach (var numeric in new[]
+                 {
+                     _rows, _columns, _marginLeft, _marginTop, _pitchX, _pitchY,
+                     _startSlot, _backOffsetX, _backOffsetY
+                 })
             numeric.ValueChanged += (_, _) => SettingsChanged();
         _fillDirection.SelectedIndexChanged += (_, _) => SettingsChanged();
+        _cutStack.CheckedChanged += (_, _) => SettingsChanged();
         _paperFormat.SelectedIndexChanged += (_, _) => SettingsChanged();
         _paperOrientation.SelectedIndexChanged += (_, _) => SettingsChanged();
         _side.SelectedIndexChanged += (_, _) => SettingsChanged();
+        _mirrorBack.CheckedChanged += (_, _) => SettingsChanged();
         _cutMarks.CheckedChanged += (_, _) => SettingsChanged();
         _copies.ValueChanged += (_, _) =>
         {
@@ -231,6 +250,7 @@ internal sealed class SequenceWorkspaceForm : Form
             _pitchX.Value = Clamp((decimal)_settings.HorizontalPitchMm, _pitchX);
             _pitchY.Value = Clamp((decimal)_settings.VerticalPitchMm, _pitchY);
             _fillDirection.SelectedIndex = _settings.FillDirection == SequenceFillDirection.Vertical ? 1 : 0;
+            _cutStack.Checked = _settings.CutStack;
             ApplyPaperFormatToControl();
             _paperOrientation.SelectedIndex = _settings.PaperOrientation == SequencePaperOrientation.Landscape ? 1 : 0;
             UpdateStartSlotMaximum();
@@ -241,8 +261,12 @@ internal sealed class SequenceWorkspaceForm : Form
                 LayoutSide.Unknown => 2,
                 _ => 0
             };
+            _mirrorBack.Checked = _settings.MirrorBack;
+            _backOffsetX.Value = Clamp((decimal)_settings.BackOffsetXmm, _backOffsetX);
+            _backOffsetY.Value = Clamp((decimal)_settings.BackOffsetYmm, _backOffsetY);
             _cutMarks.Checked = _settings.DrawCutMarks;
             _copies.Enabled = !_useDatabase.Checked;
+            UpdateBackControls();
         }
         finally
         {
@@ -305,6 +329,7 @@ internal sealed class SequenceWorkspaceForm : Form
             _settings.FillDirection = _fillDirection.SelectedIndex == 1
                 ? SequenceFillDirection.Vertical
                 : SequenceFillDirection.Horizontal;
+            _settings.CutStack = _cutStack.Checked;
             _settings.PaperFormatText = _paperFormat.SelectedIndex >= 0
                 ? _paperFormat.SelectedItem?.ToString()
                 : _settings.PaperFormatText;
@@ -318,13 +343,25 @@ internal sealed class SequenceWorkspaceForm : Form
                 2 => LayoutSide.Unknown,
                 _ => LayoutSide.Front
             };
+            _settings.MirrorBack = _mirrorBack.Checked;
+            _settings.BackOffsetXmm = (double)_backOffsetX.Value;
+            _settings.BackOffsetYmm = (double)_backOffsetY.Value;
             _settings.DrawCutMarks = _cutMarks.Checked;
+            UpdateBackControls();
         }
         finally
         {
             _syncingControls = false;
         }
         UpdatePreview();
+    }
+
+    private void UpdateBackControls()
+    {
+        var hasBack = _side.SelectedIndex is 1 or 2;
+        _mirrorBack.Enabled = hasBack;
+        _backOffsetX.Enabled = hasBack;
+        _backOffsetY.Enabled = hasBack;
     }
 
     private void UpdateStartSlotMaximum()

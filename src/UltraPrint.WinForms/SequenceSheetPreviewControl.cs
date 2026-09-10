@@ -100,8 +100,26 @@ internal sealed class SequenceSheetPreviewControl : Control
         IReadOnlyList<SequenceSlotPlacement> placements = Array.Empty<SequenceSlotPlacement>();
         var sheetCount = SequencePrintPlanner.GetSheetCount(_recordCount, _settings);
         if (_recordCount > 0 && _sheetIndex < sheetCount)
+        {
             placements = SequencePrintPlanner.GetSheetPlacements(
                 _recordCount, _layout.WidthMm, _layout.HeightMm, _settings, _sheetIndex);
+
+            // Native RetroaSpecchio swaps the record-to-cell assignment while the
+            // grid itself stays fixed. Preview that assignment for SoloRetro; the
+            // OffsetRetro values are print-coordinate adjustments and do not move
+            // the native setup grid.
+            if (_settings.Side == LayoutSide.Back && _settings.MirrorBack)
+            {
+                placements = placements
+                    .Select(x => SequencePrintPlanner.TransformForSide(
+                        x,
+                        _layout.WidthMm,
+                        _layout.HeightMm,
+                        _settings,
+                        LayoutSide.Back))
+                    .ToArray();
+            }
+        }
         var placementBySlot = placements.ToDictionary(x => x.SlotIndex);
         var pitchX = _settings.EffectiveHorizontalPitchMm(_layout.WidthMm);
         var pitchY = _settings.EffectiveVerticalPitchMm(_layout.HeightMm);

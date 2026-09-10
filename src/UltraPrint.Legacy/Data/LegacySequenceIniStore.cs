@@ -24,11 +24,18 @@ public static class LegacySequenceIniStore
         "MargineAlto",
         "PassoOrizzontale",
         "PassoVerticale",
+        "OffsetRetroX",
+        "OffsetRetroY",
         "Orizzontale",
         "Verticale",
+        "Taglio",
         "cboDimensioni",
         "FoglioPortrait",
         "FoglioLandscape",
+        "RetroaSpecchio",
+        "SoloFronte",
+        "FronteRetro",
+        "SoloRetro",
         "PaginaSingola"
     ];
 
@@ -74,12 +81,21 @@ public static class LegacySequenceIniStore
         result.HorizontalPitchMm = ReadDouble(ini, "PassoOrizzontale", result.HorizontalPitchMm, 0, 1000);
         result.VerticalPitchMm = ReadDouble(ini, "PassoVerticale", result.VerticalPitchMm, 0, 1000);
 
+        // OffsetRetro* is added after normal slot geometry and is allowed to move
+        // back output in either direction.
+        result.BackOffsetXmm = ReadDouble(ini, "OffsetRetroX", result.BackOffsetXmm, -10000, 10000);
+        result.BackOffsetYmm = ReadDouble(ini, "OffsetRetroY", result.BackOffsetYmm, -10000, 10000);
+
         var horizontal = ReadOptionalCheckValue(ini, "Orizzontale");
         var vertical = ReadOptionalCheckValue(ini, "Verticale");
         if (horizontal == true && vertical != true)
             result.FillDirection = SequenceFillDirection.Horizontal;
         else if (vertical == true && horizontal != true)
             result.FillDirection = SequenceFillDirection.Vertical;
+
+        // Taglio is not a crop-mark toggle. Native cmdImposta uses it to change
+        // record numbering from page-major to slot-major-across-pages ordering.
+        result.CutStack = ReadCheckValue(ini, "Taglio", result.CutStack);
 
         // cboDimensioni is a ComboBox. Native generic setup persists the control's
         // Text, while Form_Load populates its available strings from Campo.ini [Formati].
@@ -94,10 +110,24 @@ public static class LegacySequenceIniStore
         else if (landscape == true && portrait != true)
             result.PaperOrientation = SequencePaperOrientation.Landscape;
 
+        result.MirrorBack = ReadCheckValue(ini, "RetroaSpecchio", result.MirrorBack);
+
+        // These three OptionButtons are the native output-mode selector. Fronte and
+        // Retro themselves are the current phase/view toggles used while printing.
+        var soloFront = ReadOptionalCheckValue(ini, "SoloFronte");
+        var frontBack = ReadOptionalCheckValue(ini, "FronteRetro");
+        var soloBack = ReadOptionalCheckValue(ini, "SoloRetro");
+        if (soloFront == true && frontBack != true && soloBack != true)
+            result.Side = LayoutSide.Front;
+        else if (frontBack == true && soloFront != true && soloBack != true)
+            result.Side = LayoutSide.Unknown;
+        else if (soloBack == true && soloFront != true && frontBack != true)
+            result.Side = LayoutSide.Back;
+
         result.SinglePageMode = ReadCheckValue(ini, "PaginaSingola", result.SinglePageMode);
 
-        // Fronte/Retro, Taglio and remaining device-specific controls stay
-        // untouched until their output behavior is proven.
+        // Fronte/Retro remain transient native phase controls. Managed crop marks
+        // are deliberately sidecar-only because no legacy crop-mark control exists.
         var capacity = Math.Max(1, result.Rows * result.Columns);
         if (result.StartSlot >= capacity) result.StartSlot = capacity - 1;
         result.Validate(layout.WidthMm, layout.HeightMm);
@@ -125,12 +155,19 @@ public static class LegacySequenceIniStore
         ini.Set(SectionName, "MargineAlto", FormatNumber(settings.MarginTopMm));
         ini.Set(SectionName, "PassoOrizzontale", FormatNumber(settings.HorizontalPitchMm));
         ini.Set(SectionName, "PassoVerticale", FormatNumber(settings.VerticalPitchMm));
+        ini.Set(SectionName, "OffsetRetroX", FormatNumber(settings.BackOffsetXmm));
+        ini.Set(SectionName, "OffsetRetroY", FormatNumber(settings.BackOffsetYmm));
         ini.Set(SectionName, "Orizzontale", settings.FillDirection == SequenceFillDirection.Horizontal ? "1" : "0");
         ini.Set(SectionName, "Verticale", settings.FillDirection == SequenceFillDirection.Vertical ? "1" : "0");
+        ini.Set(SectionName, "Taglio", settings.CutStack ? "1" : "0");
         if (!string.IsNullOrWhiteSpace(settings.PaperFormatText))
             ini.Set(SectionName, "cboDimensioni", settings.PaperFormatText);
         ini.Set(SectionName, "FoglioPortrait", settings.PaperOrientation == SequencePaperOrientation.Portrait ? "1" : "0");
         ini.Set(SectionName, "FoglioLandscape", settings.PaperOrientation == SequencePaperOrientation.Landscape ? "1" : "0");
+        ini.Set(SectionName, "RetroaSpecchio", settings.MirrorBack ? "1" : "0");
+        ini.Set(SectionName, "SoloFronte", settings.Side == LayoutSide.Front ? "1" : "0");
+        ini.Set(SectionName, "FronteRetro", settings.Side == LayoutSide.Unknown ? "1" : "0");
+        ini.Set(SectionName, "SoloRetro", settings.Side == LayoutSide.Back ? "1" : "0");
         ini.Set(SectionName, "PaginaSingola", settings.SinglePageMode ? "1" : "0");
         ini.Save(fullPath);
     }

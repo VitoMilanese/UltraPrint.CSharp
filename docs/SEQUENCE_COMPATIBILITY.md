@@ -1,8 +1,8 @@
 # Sequenza / sheet-print compatibility
 
-UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 method names include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, front/back/page controls, and row/column/margin/spacing handlers.
+UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 methods include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, the front/back phase controls, print-mode controls, page controls and row/column/margin/spacing handlers.
 
-The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and also exposes the proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
+The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and exposes the proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
 
 ## Implemented visible workflow
 
@@ -10,20 +10,21 @@ The managed replacement exposes the visible workflow through **Sequence -> Seque
 - native-compatible X offset (`MargineDestro`) and top margin in millimetres;
 - native `PassoOrizzontale` / `PassoVerticale` inter-card gaps in millimetres;
 - Horizontal (`Orizzontale`, row-major) or Vertical (`Verticale`, column-major) record fill;
+- native `Taglio` cut-and-stack ordering;
 - legacy virtual sheet formats loaded from `Campo.ini` `[Formati]` into `cboDimensioni`;
 - Portrait (`FoglioPortrait`) or Landscape (`FoglioLandscape`) paper orientation;
 - selectable first physical slot on the first sheet;
-- interactive sheet preview; clicking a first-sheet slot moves record 1 there;
-- previous/next/first/last logical sheet navigation;
-- Front, Back, or Front + Back output;
-- optional cut marks;
-- Page Setup using the real Windows printer/paper settings and synchronizing its orientation back into Sequenza state;
-- Preview/Print current logical sheet;
-- Preview/Print all logical sheets;
+- interactive sheet preview and logical-sheet navigation;
+- native output modes `SoloFronte`, `FronteRetro`, `SoloRetro`;
+- native `RetroaSpecchio` horizontal back-slot mirroring;
+- native signed `OffsetRetroX` / `OffsetRetroY` back-coordinate corrections;
+- optional managed crop marks, explicitly separate from legacy `Taglio`;
+- Page Setup using the real Windows printer/paper settings and synchronizing orientation back into Sequenza state;
+- Preview/Print current logical sheet and Preview/Print all logical sheets;
 - database-record imposition using the same `.ly.data.json`, query/table state and field bindings as Database / Records;
 - template-only repeated-card printing when database records are disabled.
 
-The first sheet starts at the selected physical slot in the selected fill order. Every later sheet starts from the first cell in that order. Current-sheet printing preserves that logical sheet's record assignment rather than re-numbering it from record 1.
+The first sheet starts at the selected physical slot in the selected fill order. Every later sheet uses the normal grid. The native `Taglio` formula is reproduced exactly when the first slot is the native/default first cell; the managed non-zero first-slot extension rotates the cut-and-stack sequence so record 1 still begins at the explicitly selected first-sheet cell.
 
 ## Recovered native sheet geometry
 
@@ -38,20 +39,80 @@ X = MargineDestro + column * (cardWidth + PassoOrizzontale)
 Y = MargineAlto  + row    * (cardHeight + PassoVerticale)
 ```
 
-This resolves two earlier ambiguities:
+Despite its name, `MargineDestro` is observably a **left-origin X offset**. `PassoOrizzontale` and `PassoVerticale` are **gaps between cards**, not complete slot pitches.
 
-- despite its name, `MargineDestro` is observably a **left-origin X offset** in the print path, so it maps to managed `MarginLeftMm`;
-- `PassoOrizzontale` and `PassoVerticale` are **gaps between cards**, not the complete slot pitch.
+Native `cmdImposta_Click` internally constructs an MSFlexGrid with `2 * Righe` rows and `2 * Colonne` columns. Card cells and gap cells alternate. The managed planner does not reproduce that implementation detail literally; it produces the equivalent logical card geometry above.
 
-The used sheet extent therefore includes all card widths/heights plus only `Columns - 1` / `Rows - 1` gaps.
+`Orizzontale` and `Verticale` change record traversal, not card rotation: `Orizzontale` is row-major and `Verticale` is column-major.
 
-The `Orizzontale` and `Verticale` controls do not rotate the card. Their branches change the MSFlexGrid record traversal: `Orizzontale` fills rows first (row-major), while `Verticale` fills columns first (column-major). The managed planner preserves the selected physical first slot in either traversal.
+## `Taglio`: cut-and-stack ordering
+
+`Taglio` is not a crop-mark switch. Native `cmdImposta_Click` tests it independently inside both the horizontal and vertical fill paths.
+
+Without `Taglio`, one-based record numbering on one-based page `p` is page-major:
+
+```text
+start = (p - 1) * capacity + 1
+record(slotOrdinal) = start + slotOrdinal - 1
+```
+
+With `Taglio`, the initial slot ordinal starts at 1 and each cell computes:
+
+```text
+record = (slotOrdinal - 1) * Pagine + Pagina
+```
+
+Example with capacity 6, 10 records and therefore 2 pages:
+
+```text
+Page 1: 1, 3, 5, 7, 9
+Page 2: 2, 4, 6, 8, 10
+```
+
+`Orizzontale`/`Verticale` then decide where those slot ordinals appear physically. This is classic cut-and-stack ordering: after printing and cutting equal slot stacks, records remain sequential when the stacks are combined.
+
+The previous managed checkbox named `Draw cut marks` was an unrelated convenience feature. It remains available as **Managed crop marks (non-legacy)** and is deliberately not serialized as `Taglio`.
+
+## Back-side behavior
+
+### Print mode
+
+The native output mode is selected by three OptionButtons:
+
+- `SoloFronte` — front only;
+- `FronteRetro` — front followed by back for the same logical page;
+- `SoloRetro` — back only.
+
+`Fronte` and `Retro` are separate transient phase/view controls used while `StampaPagina_Click` executes. They are not the persistent output-mode selector. The managed `LayoutSide.Front`, `LayoutSide.Unknown` and `LayoutSide.Back` values encode `SoloFronte`, `FronteRetro` and `SoloRetro` respectively to preserve existing sidecar compatibility.
+
+`StampaTutte_Click` loops the logical `Pagina` range and delegates each page to the page-print routine; front/back phase orchestration stays inside `StampaPagina_Click`. Managed Print All follows the same conceptual shape.
+
+### `RetroaSpecchio`
+
+`RetroaSpecchio` is applied while `cmdImposta_Click` builds the grid for the `Retro` phase. Native code swaps symmetric MSFlexGrid columns around the vertical centreline. Because the native grid alternates card and gap columns, its arithmetic uses the doubled grid dimensions; the equivalent logical-card transform is:
+
+```text
+backColumn = Columns - 1 - frontColumn
+```
+
+This mirrors **record-to-slot assignment** horizontally. It does not flip the pixels inside each card. The managed printer therefore moves the same record/card to the mirrored back slot and renders the back side normally.
+
+### `OffsetRetroX` / `OffsetRetroY`
+
+After the normal cell geometry has been calculated, `StampaPagina_Click` checks the `Retro` phase and adds the two text values directly to the final coordinates:
+
+```text
+X_back = X_slot + OffsetRetroX
+Y_back = Y_slot + OffsetRetroY
+```
+
+The offsets accept signed values and are represented in managed code as millimetres. They affect only back output.
 
 ## Legacy sheet formats from `Campo.ini`
 
-Native `SubMain` builds the global configuration path as `App.Path + "\\Campo.ini"`. `Sequenza.Form_Load` clears `cboDimensioni`, loops keys **1 through 20** in the `[Formati]` section, adds every non-empty value, and finally selects list index 0.
+Native `SubMain` builds the global configuration path as `App.Path + "\\Campo.ini"`. `Sequenza.Form_Load` clears `cboDimensioni`, loops keys **1 through 20** in `[Formati]`, adds every non-empty value, then selects list index 0.
 
-The supplied UltraPrint `Campo.ini` contains:
+The supplied UltraPrint configuration contains:
 
 ```ini
 [Formati]
@@ -60,58 +121,17 @@ The supplied UltraPrint `Campo.ini` contains:
 3=Card [8,5x5,4 cm]
 ```
 
-`cboDimensioni_Click` parses the first number between `[` and `x`, parses the second between `x` and the following space, converts the centimetre values to the native grid scale, and resizes the sheet-preview MSFlexGrid. Portrait keeps the parsed width/height order; Landscape swaps them. The equivalent managed preview sizes are therefore 210 x 297 mm for A4, 297 x 420 mm for A3, and 85 x 54 mm for Card before orientation swapping.
+`cboDimensioni_Click` parses the first number between `[` and `x` and the second between `x` and the following space. Portrait keeps width/height; Landscape swaps them. Managed preview sizes are therefore 210 x 297 mm for A4, 297 x 420 mm for A3 and 85 x 54 mm for Card before orientation swapping.
 
-`LegacySequencePaperFormatStore` reproduces the proven lookup boundary and parsing grammar. Non-empty entries with an unrecognized dimension string remain visible as raw legacy text rather than being discarded. The managed Sequence form uses the parsed size for its virtual sheet preview and extent warning. If no usable format exists, it falls back to the selected Windows printer page size for managed preview only.
-
-This recovery **does not equate `cboDimensioni` with a Windows `PaperKind`**. Native evidence currently proves virtual sheet/grid sizing, not a direct `Printer.PaperSize` assignment. Page Setup and the actual printer driver remain separate until a direct native paper-device mapping is recovered.
-
-`cboDimensioni` is also a proven `.Seq` setup control: generic `ScriviSetup` / `LeggiSetup` persist ComboBox `Text`, so the managed legacy setup layer reads and writes the complete selected format string.
+The recovered path does **not** prove a direct mapping from `cboDimensioni` text to Windows `PaperKind`. `StampaPagina_Click` consumes the rebuilt MSFlexGrid geometry rather than rereading `cboDimensioni`, so the managed code keeps virtual Sequenza sheet size separate from the actual printer driver's paper choice.
 
 ## Paper orientation and coordinate origin
 
-`FoglioPortrait` / `FoglioLandscape` are a second, independent OptionButton pair. Native `FoglioPortrait_Click` stores orientation state `0`, `FoglioLandscape_Click` stores `1`, and both route through `cboDimensioni_Click`. That routine swaps the selected sheet width/height before rebuilding the MSFlexGrid, proving these controls represent **paper orientation**, not record fill direction or card rotation.
+`FoglioPortrait` / `FoglioLandscape` are independent of record fill. Their click handlers route through `cboDimensioni_Click`, which swaps the selected virtual sheet width/height before rebuilding the grid.
 
-The managed Sequence workspace therefore exposes paper orientation separately and applies it directly to `PageSettings.Landscape`. Legacy `.Seq` files read/write `FoglioPortrait` and `FoglioLandscape` as mutually exclusive numeric `1`/`0` values. Windows Page Setup is initialized from the Sequenza orientation and, when accepted, writes its resulting orientation back to the managed setting.
+The managed Sequence workspace applies orientation to `PageSettings.Landscape`. Windows Page Setup is initialized from Sequenza orientation and writes its resulting orientation back when accepted.
 
-The native `SmartFormDll.Report.PrintPage` callable accepts the printer/picture target plus `MargineDx` and `MargineTop`. VB6 Printer coordinates are page coordinates: `(0,0)` is the physical page's upper-left edge. By contrast, .NET `PrintDocument` with `OriginAtMargins = false` supplies a `Graphics` origin at the printer's **printable-area** upper-left corner. The managed sequence print path compensates `PageSettings.HardMarginX` / `HardMarginY` so recovered UltraPrint millimetre coordinates continue to mean positions from the physical page edge. The printer driver still performs the real clipping of physically unprintable pixels.
-
-This does not claim that every printer exposes identical hard-margin values to the 2003 driver stack. Exact device clipping remains a real-printer parity item, but the managed coordinate system now matches the native page-origin contract instead of silently adding the modern printer hard margin to every placement.
-
-Managed `.sequence.json` state is now version 4. Version 4 persists the raw `cboDimensioni` text. Version 3 already has paper orientation and migrates with no saved paper format, causing the Sequence form to use the native first-`[Formati]` fallback. Version 2 already has correct gap/fill semantics and migrates to Portrait; version 1 additionally migrates old full-pitch values to native `Passo` gaps by subtracting card width/height.
-
-## Front/back behavior
-
-When **Front + Back** is selected, the managed print service emits two consecutive physical pages for each logical sheet: front first, back second, with identical record-to-slot assignments. This is the safest currently proven representation of the legacy front/back intent.
-
-Exact printer-specific duplex mirroring/rotation remains unclaimed until UltraPrint 2.2.115 is compared on a real duplex/card-printer workflow. Device-specific transforms must not be guessed into the generic sheet planner.
-
-## Recovered native callable contracts
-
-Direct disassembly distinguishes explicit parameters from VB6 hidden return storage:
-
-| Method | Native VA | Recovered callable shape | Managed exposure |
-| --- | ---: | --- | --- |
-| `Pescarecord` | `0x005C3590` | zero explicit arguments; modal `FormQBE` -> DAO `FindFirst`; returns `AbsolutePosition + 1` as `Variant`, or `0` when cancelled/not found | exposed |
-| `PosizionaPagina` | `0x005C5250` | one explicit `Variant` `NumRecord`; computes the legacy `Pagina`, refreshes it through `cmdImposta_Click`, then scans/highlights the matching `MSFlexGrid1` cell | exposed |
-| `ScriviSetup` | `0x005D5810` | one **Optional Variant** filename | exposed |
-| `LeggiSetup` | `0x005D65B0` | one **Optional Variant** filename | exposed |
-
-### `Pescarecord`
-
-Native `Pescarecord` starts with a zero Variant result and `On Error Resume Next`. It builds FormQBE field metadata from the current DAO Recordset, shows the compact QBE dialog, then runs `Recordset.FindFirst`. A failed `NoMatch` shows the literal message `Record non trovato`; success leaves the recordset on the matching row and returns its one-based number via `AbsolutePosition + 1`.
-
-The managed `Sequenza.Pescarecord()` / `Stampa.Pescarecord()` preserves those observable semantics. Its QBE dialog uses the recovered condition tokens (`*..`, `.*.`, `..*`, `=`, `<>`, range, comparisons, `x--x`, `Vero`, `Falso`). Search is performed against the same loaded rows used by Database / Records, and a successful match moves that shared `BindingSource`.
-
-The managed matcher evaluates `DataTable` values instead of issuing DAO `FindFirst` directly. This preserves the workflow across Access/FFM as well as managed DBF/Excel/CSV/text sources while keeping the recovered one-based return contract.
-
-### `PosizionaPagina`
-
-The caller contract is `PosizionaPagina NumRecord`: the legacy `cmdPosiziona_Click` handler calls `Pescarecord`, rejects a zero result, and passes the returned one-based record number directly to `PosizionaPagina`. `RecordxPagina` is `Righe * Colonne`; `Pagine` is the ceiling of total records divided by that capacity.
-
-The native page formula is intentionally preserved exactly, including its boundary quirk. With `PaginaSingola = 0`, UltraPrint assigns `Fix(NumRecord / RecordxPagina) + 1`; with `PaginaSingola <> 0`, it assigns `NumRecord Mod Pagine`. `Pagina_Change` then normalizes any non-empty result outside `1..Pagine` back to page `1`. Consequently an exact capacity multiple can select the following page, and a modulo result of zero becomes page 1.
-
-After assigning the page, native code calls `cmdImposta_Click`, walks `MSFlexGrid1` data cells (excluding row/column headers), compares each cell `Text` with `NumRecord`, and marks a match with `QBColor(12)` plus bold text. The managed Sequence preview mirrors that visible selection with a red/bold record cell. If the native page formula places the record on a page that does not contain it, the managed workspace preserves that page choice and leaves the record unhighlighted rather than silently relocating it.
+The native `SmartFormDll.Report.PrintPage` callable accepts the target plus `MargineDx` and `MargineTop`. VB6 Printer coordinates are page coordinates from the physical page's upper-left edge. .NET `PrintDocument` with `OriginAtMargins = false` exposes `Graphics` at the printable-area origin, so the managed sequence print path compensates `PageSettings.HardMarginX` / `HardMarginY` to restore the legacy physical-page coordinate system. Real-driver clipping still remains a real-printer validation item.
 
 ## Legacy `.Seq` setup format
 
@@ -119,49 +139,46 @@ When the Optional filename is Missing, native `ScriviSetup` and `LeggiSetup` bui
 
 `App.Path + "\\ly\\" + frmCarta.Caption + ".Seq"`
 
-They enumerate the form controls and persist `Name` plus `Value`/`Text` as INI values under:
+They enumerate form controls and persist `Name` plus `Value`/`Text` under `[Sequenza]`.
 
-`[Sequenza]`
+`LegacySequenceIniStore` maps the controls with proven managed equivalents:
 
-`LegacySequenceIniStore` now maps the controls whose native behavior is proven:
+- `Righe`, `Colonne`;
+- `MargineDestro`, `MargineAlto`;
+- `PassoOrizzontale`, `PassoVerticale`;
+- `OffsetRetroX`, `OffsetRetroY`;
+- `Orizzontale`, `Verticale`;
+- `Taglio`;
+- `cboDimensioni`;
+- `FoglioPortrait`, `FoglioLandscape`;
+- `RetroaSpecchio`;
+- `SoloFronte`, `FronteRetro`, `SoloRetro`;
+- `PaginaSingola`.
 
-- `Righe` -> rows;
-- `Colonne` -> columns;
-- `MargineDestro` -> left-origin X offset;
-- `MargineAlto` -> top margin;
-- `PassoOrizzontale` -> horizontal inter-card gap;
-- `PassoVerticale` -> vertical inter-card gap;
-- `Orizzontale` -> row-major fill;
-- `Verticale` -> column-major fill;
-- `cboDimensioni` -> raw legacy `[Formati]` sheet-format text;
-- `FoglioPortrait` -> portrait paper orientation;
-- `FoglioLandscape` -> landscape paper orientation;
-- `PaginaSingola` -> recovered single-page positioning mode.
+Numeric dimensions are written with the original Italian decimal comma and read using both Italian and invariant forms. OptionButton/checkbox values are emitted as numeric `1`/`0`; boolean text including Italian `Vero`/`Falso` is accepted when reading existing files. Existing `.Seq` files are updated conservatively and unknown keys, including transient `Fronte`/`Retro`, remain untouched.
 
-Numeric dimensions are written with the original Italian-style decimal comma and read using both Italian and invariant numeric forms. OptionButton values are emitted as numeric `1`/`0`, which is locale-independent for the legacy VB6 setter. Boolean text, including Italian `Vero`/`Falso`, is accepted when reading existing files.
+Managed `.sequence.json` is version 5. Version 4 already contains `cboDimensioni` and orientation and migrates the newly recovered Taglio/back controls to disabled/zero defaults. Earlier migrations retain the existing gap/orientation compatibility rules. The managed-only crop-mark setting remains sidecar-only.
 
-Existing `.Seq` files are updated conservatively: unknown keys are preserved. `Fronte`/`Retro`, `Taglio`, and other device/print-specific controls remain unmapped until their exact output behavior is proven.
+## Recovered native callable contracts
+
+| Method | Native VA | Recovered callable shape | Managed exposure |
+| --- | ---: | --- | --- |
+| `Pescarecord` | `0x005C3590` | zero explicit arguments; modal `FormQBE` -> DAO `FindFirst`; returns `AbsolutePosition + 1` as `Variant`, or `0` when cancelled/not found | exposed |
+| `PosizionaPagina` | `0x005C5250` | one explicit `Variant` `NumRecord`; computes legacy `Pagina`, refreshes through `cmdImposta_Click`, scans/highlights matching grid cell | exposed |
+| `ScriviSetup` | `0x005D5810` | one **Optional Variant** filename | exposed |
+| `LeggiSetup` | `0x005D65B0` | one **Optional Variant** filename | exposed |
+
+`Pescarecord` reproduces the observable QBE/FindFirst workflow, one-based successful result and `0` failure/cancel shape while sharing the current managed database row.
+
+`PosizionaPagina` preserves the native arithmetic, including the exact-capacity boundary quirk. In normal mode it computes `Fix(NumRecord / RecordxPagina) + 1`; in `PaginaSingola` mode it computes `NumRecord Mod Pagine`; `Pagina_Change` normalizes values outside `1..Pagine` back to page 1. The matching grid cell is shown with the native `QBColor(12)`/bold cue in managed preview.
 
 ## ScriptControl identity
 
-Native `Funzioni.AddObjects` registers the exact same global `Sequenza` instance twice, under the names `Sequenza` and `Stampa`.
-
-The managed registration does the same: one `LegacyScriptSequenceFacade` object is registered under both names, in recovered relative order:
-
-`... Db -> Sequenza -> Stampa -> frmDatabase ...`
-
-The exposed subset is:
-
-- `Sequenza.Pescarecord()` / `Stampa.Pescarecord()`;
-- `Sequenza.PosizionaPagina(NumRecord)` / `Stampa.PosizionaPagina(NumRecord)`;
-- `Sequenza.ScriviSetup([Filename])` / `Stampa.ScriviSetup([Filename])`;
-- `Sequenza.LeggiSetup([Filename])` / `Stampa.LeggiSetup([Filename])`.
-
-An application-lifetime WinForms sequence host follows the layout currently open in `MainForm`; record search shares the application-lifetime database host, and `PosizionaPagina` drives the live Sequence workspace.
+Native `Funzioni.AddObjects` registers the same global `Sequenza` instance under both `Sequenza` and `Stampa`. Managed registration does the same and exposes the recovered `Pescarecord`, `PosizionaPagina`, `ScriviSetup` and `LeggiSetup` subset through one facade instance.
 
 ## Remaining parity work
 
-- determine whether and how the selected legacy `cboDimensioni` value is applied to the actual VB6 Printer/device paper size; do not infer `PaperKind` from display text;
-- compare hard-margin values and clipping against the actual legacy printer/driver combinations even though the page-origin coordinate contract is now matched;
-- recover exact front/back duplex mirroring/rotation and remaining `.Seq` controls such as `Fronte`, `Retro` and `Taglio`;
-- integrate device/card-printer progress/cancel behavior after the standard sheet workflow is stable.
+- determine whether and how legacy `cboDimensioni` influenced the physical printer driver's paper selection outside the recovered grid path;
+- compare hard margins, clipping, `RetroaSpecchio` and `OffsetRetro*` against real legacy printer/driver combinations;
+- recover device/card-printer progress, cancellation and hardware-specific duplex behavior beyond the generic Sequenza slot mirror;
+- keep expanding the script/device surface only where native behavior is proven.

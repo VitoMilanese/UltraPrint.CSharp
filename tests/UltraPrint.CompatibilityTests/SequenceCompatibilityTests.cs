@@ -72,6 +72,43 @@ internal static class SequenceCompatibilityTests
         AssertNearly(97, verticalFirst[0].Xmm, 0.001, "vertical fill first X");
         AssertNearly(71, verticalFirst[1].Ymm, 0.001, "vertical fill second Y");
         AssertEqual(SequencePaperOrientation.Landscape, vertical.PaperOrientation, "clone preserves paper orientation");
+
+        var cutStack = settings.Clone();
+        cutStack.StartSlot = 0;
+        cutStack.CutStack = true;
+        cutStack.FillDirection = SequenceFillDirection.Horizontal;
+        AssertEqual(2, SequencePrintPlanner.GetSheetCount(10, cutStack), "Taglio uses the normal logical page count");
+        var cutFirst = SequencePrintPlanner.GetSheetPlacements(10, 85, 54, cutStack, 0);
+        AssertSequence(new[] { 0, 2, 4, 6, 8 }, cutFirst.Select(x => x.RecordIndex), "Taglio first page uses slot-major record numbering");
+        AssertSequence(new[] { 0, 1, 2, 3, 4 }, cutFirst.Select(x => x.SlotIndex), "Taglio first page keeps horizontal traversal");
+        var cutSecond = SequencePrintPlanner.GetSheetPlacements(10, 85, 54, cutStack, 1);
+        AssertSequence(new[] { 1, 3, 5, 7, 9 }, cutSecond.Select(x => x.RecordIndex), "Taglio second page interleaves the following records");
+
+        cutStack.FillDirection = SequenceFillDirection.Vertical;
+        var cutVertical = SequencePrintPlanner.GetSheetPlacements(10, 85, 54, cutStack, 0);
+        AssertSequence(new[] { 0, 2, 4, 6, 8 }, cutVertical.Select(x => x.RecordIndex), "Taglio numbering is independent of fill direction");
+        AssertSequence(new[] { 0, 3, 1, 4, 2 }, cutVertical.Select(x => x.SlotIndex), "Taglio respects Verticale column-major traversal");
+
+        cutStack.FillDirection = SequenceFillDirection.Horizontal;
+        cutStack.StartSlot = 2;
+        var cutWithStart = SequencePrintPlanner.GetSheetPlacements(8, 85, 54, cutStack, 0);
+        AssertEqual(2, cutWithStart[0].SlotIndex, "managed first slot remains the first Taglio cell");
+        AssertEqual(0, cutWithStart[0].RecordIndex, "managed first slot still starts with record one under Taglio");
+
+        var backSettings = settings.Clone();
+        backSettings.StartSlot = 0;
+        backSettings.MirrorBack = true;
+        backSettings.BackOffsetXmm = 1.5;
+        backSettings.BackOffsetYmm = -2;
+        var frontPlacement = SequencePrintPlanner.GetSheetPlacements(1, 85, 54, backSettings, 0).Single();
+        var backPlacement = SequencePrintPlanner.TransformForSide(frontPlacement, 85, 54, backSettings, LayoutSide.Back);
+        AssertEqual(2, backPlacement.SlotIndex, "RetroaSpecchio mirrors slot zero to the opposite column");
+        AssertEqual(2, backPlacement.Column, "RetroaSpecchio mirrors the logical column");
+        AssertEqual(frontPlacement.RecordIndex, backPlacement.RecordIndex, "RetroaSpecchio preserves record identity");
+        AssertNearly(188.5, backPlacement.Xmm, 0.001, "OffsetRetroX is added after mirrored back geometry");
+        AssertNearly(9, backPlacement.Ymm, 0.001, "OffsetRetroY is added only to back geometry");
+        var unchangedFront = SequencePrintPlanner.TransformForSide(frontPlacement, 85, 54, backSettings, LayoutSide.Front);
+        AssertEqual(frontPlacement, unchangedFront, "back transforms do not affect front output");
     }
 
     private static void TestLegacyPositioning()
@@ -115,6 +152,11 @@ internal static class SequenceCompatibilityTests
             VerticalPitchMm = 3.25,
             FillDirection = SequenceFillDirection.Vertical,
             PaperOrientation = SequencePaperOrientation.Landscape,
+            PaperFormatText = "A4 [21x29,7 cm]",
+            CutStack = true,
+            MirrorBack = true,
+            BackOffsetXmm = 1.25,
+            BackOffsetYmm = -2.5,
             StartSlot = 1,
             Side = LayoutSide.Back,
             SinglePageMode = true,
@@ -131,11 +173,45 @@ internal static class SequenceCompatibilityTests
         AssertNearly(3.25, loaded.VerticalPitchMm, 0.001, "sequence store vertical Passo gap");
         AssertEqual(SequenceFillDirection.Vertical, loaded.FillDirection, "sequence store fill direction");
         AssertEqual(SequencePaperOrientation.Landscape, loaded.PaperOrientation, "sequence store paper orientation");
+        AssertEqual("A4 [21x29,7 cm]", loaded.PaperFormatText!, "sequence store legacy paper format");
+        AssertTrue(loaded.CutStack, "sequence store Taglio mode");
+        AssertTrue(loaded.MirrorBack, "sequence store RetroaSpecchio");
+        AssertNearly(1.25, loaded.BackOffsetXmm, 0.001, "sequence store OffsetRetroX");
+        AssertNearly(-2.5, loaded.BackOffsetYmm, 0.001, "sequence store OffsetRetroY");
         AssertEqual(1, loaded.StartSlot, "sequence store first slot");
         AssertEqual(LayoutSide.Back, loaded.Side, "sequence store side");
         AssertTrue(loaded.SinglePageMode, "sequence store single-page mode");
-        AssertTrue(loaded.DrawCutMarks, "sequence store cut marks");
+        AssertTrue(loaded.DrawCutMarks, "sequence store managed crop marks");
         AssertTrue(File.Exists(layout.SourcePath + ".sequence.json"), "sequence setup uses non-destructive sidecar");
+
+        File.WriteAllText(layout.SourcePath + ".sequence.json", """
+{
+  "Version": 4,
+  "Settings": {
+    "Rows": 3,
+    "Columns": 2,
+    "MarginLeftMm": 4.5,
+    "MarginTopMm": 8.25,
+    "HorizontalPitchMm": 2.5,
+    "VerticalPitchMm": 3.25,
+    "FillDirection": 1,
+    "PaperOrientation": 1,
+    "PaperFormatText": "A4 [21x29,7 cm]",
+    "StartSlot": 1,
+    "Side": 2,
+    "DrawCutMarks": true,
+    "SinglePageMode": true
+  }
+}
+""");
+        var migratedV4 = ManagedSequenceStore.Load(layout);
+        AssertEqual("A4 [21x29,7 cm]", migratedV4.PaperFormatText!, "v4 paper format is preserved");
+        AssertTrue(!migratedV4.CutStack, "v4 migrates Taglio disabled");
+        AssertTrue(!migratedV4.MirrorBack, "v4 migrates RetroaSpecchio disabled");
+        AssertNearly(0, migratedV4.BackOffsetXmm, 0.001, "v4 migrates zero back X offset");
+        AssertNearly(0, migratedV4.BackOffsetYmm, 0.001, "v4 migrates zero back Y offset");
+        AssertEqual(LayoutSide.Unknown, migratedV4.Side, "v4 preserves managed Front + Back mode");
+        AssertTrue(migratedV4.DrawCutMarks, "v4 preserves managed crop marks");
 
         File.WriteAllText(layout.SourcePath + ".sequence.json", """
 {
@@ -159,6 +235,7 @@ internal static class SequenceCompatibilityTests
         AssertNearly(2.5, migratedV2.HorizontalPitchMm, 0.001, "v2 native Passo gap is preserved");
         AssertEqual(SequenceFillDirection.Vertical, migratedV2.FillDirection, "v2 fill direction is preserved");
         AssertEqual(SequencePaperOrientation.Portrait, migratedV2.PaperOrientation, "v2 missing paper orientation migrates to portrait");
+        AssertTrue(!migratedV2.CutStack && !migratedV2.MirrorBack, "v2 migrates recovered sequence modes disabled");
 
         File.WriteAllText(layout.SourcePath + ".sequence.json", """
 {
@@ -199,5 +276,13 @@ internal static class SequenceCompatibilityTests
     {
         if (Math.Abs(expected - actual) > tolerance)
             throw new InvalidOperationException($"FAILED: {message}. Expected {expected}, actual {actual}.");
+    }
+
+    private static void AssertSequence<T>(IReadOnlyList<T> expected, IEnumerable<T> actual, string message)
+    {
+        var actualList = actual.ToArray();
+        if (!expected.SequenceEqual(actualList))
+            throw new InvalidOperationException(
+                $"FAILED: {message}. Expected [{string.Join(", ", expected)}], actual [{string.Join(", ", actualList)}].");
     }
 }

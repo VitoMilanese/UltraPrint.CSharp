@@ -10,7 +10,7 @@ namespace UltraPrint.Legacy.Data;
 /// </summary>
 public static class ManagedSequenceStore
 {
-    private const int CurrentVersion = 4;
+    private const int CurrentVersion = 5;
 
     public static string? GetPath(CardLayout layout) =>
         string.IsNullOrWhiteSpace(layout.SourcePath) ? null : layout.SourcePath + ".sequence.json";
@@ -30,17 +30,24 @@ public static class ManagedSequenceStore
             {
                 case CurrentVersion:
                     break;
+                case 4:
+                    // Version 4 already persisted legacy sheet-format text. Taglio,
+                    // back-slot mirroring and back offsets were not managed yet.
+                    InitializeRecoveredBackAndStackDefaults(settings);
+                    break;
                 case 3:
                     // Version 3 already persisted native paper orientation. The
                     // legacy cboDimensioni text was not managed yet; null means the
                     // Sequence form will select the first Campo.ini [Formati] item.
                     settings.PaperFormatText = null;
+                    InitializeRecoveredBackAndStackDefaults(settings);
                     break;
                 case 2:
                     // Version 2 already uses native Passo gap semantics. Paper
                     // orientation and cboDimensioni were not persisted yet.
                     settings.PaperOrientation = SequencePaperOrientation.Portrait;
                     settings.PaperFormatText = null;
+                    InitializeRecoveredBackAndStackDefaults(settings);
                     break;
                 case 1:
                     // Version 1 treated HorizontalPitchMm/VerticalPitchMm as the full
@@ -59,6 +66,7 @@ public static class ManagedSequenceStore
                     settings.FillDirection = SequenceFillDirection.Horizontal;
                     settings.PaperOrientation = SequencePaperOrientation.Portrait;
                     settings.PaperFormatText = null;
+                    InitializeRecoveredBackAndStackDefaults(settings);
                     break;
                 default:
                     return CreateDefault(layout);
@@ -96,10 +104,22 @@ public static class ManagedSequenceStore
         FillDirection = SequenceFillDirection.Horizontal,
         PaperOrientation = SequencePaperOrientation.Portrait,
         PaperFormatText = null,
+        CutStack = false,
+        MirrorBack = false,
+        BackOffsetXmm = 0,
+        BackOffsetYmm = 0,
         StartSlot = 0,
         Side = LayoutSide.Front,
         DrawCutMarks = false
     };
+
+    private static void InitializeRecoveredBackAndStackDefaults(SequencePrintSettings settings)
+    {
+        settings.CutStack = false;
+        settings.MirrorBack = false;
+        settings.BackOffsetXmm = 0;
+        settings.BackOffsetYmm = 0;
+    }
 
     private sealed record SequenceFile(int Version, SequencePrintSettings? Settings);
 }

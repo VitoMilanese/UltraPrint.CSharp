@@ -52,8 +52,36 @@ public sealed class SequencePrintSettings
     /// </summary>
     public string? PaperFormatText { get; set; }
 
+    /// <summary>
+    /// Native Taglio mode. Records are numbered slot-first across logical pages:
+    /// record = (slotOrdinal - 1) * pageCount + pageNumber.
+    /// </summary>
+    public bool CutStack { get; set; }
+
+    /// <summary>
+    /// Native RetroaSpecchio. On the back phase, record-to-slot assignment is
+    /// mirrored horizontally; the card bitmap/content itself is not flipped.
+    /// </summary>
+    public bool MirrorBack { get; set; }
+
+    /// <summary>Native OffsetRetroX, added to the computed X only for back output.</summary>
+    public double BackOffsetXmm { get; set; }
+
+    /// <summary>Native OffsetRetroY, added to the computed Y only for back output.</summary>
+    public double BackOffsetYmm { get; set; }
+
     public int StartSlot { get; set; }
+
+    /// <summary>
+    /// Encodes the native print-mode OptionButtons: Front = SoloFronte,
+    /// Back = SoloRetro, Unknown = FronteRetro (front then back).
+    /// </summary>
     public LayoutSide Side { get; set; } = LayoutSide.Front;
+
+    /// <summary>
+    /// Managed-only crop-mark enhancement. This is deliberately not mapped to the
+    /// legacy Taglio control, whose recovered meaning is cut-and-stack ordering.
+    /// </summary>
     public bool DrawCutMarks { get; set; }
 
     /// <summary>
@@ -76,6 +104,10 @@ public sealed class SequencePrintSettings
         if (Columns is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(Columns));
         if (MarginLeftMm < 0 || MarginTopMm < 0) throw new ArgumentOutOfRangeException(nameof(MarginLeftMm));
         if (HorizontalPitchMm < 0 || VerticalPitchMm < 0) throw new ArgumentOutOfRangeException(nameof(HorizontalPitchMm));
+        if (!double.IsFinite(BackOffsetXmm) || Math.Abs(BackOffsetXmm) > 10000)
+            throw new ArgumentOutOfRangeException(nameof(BackOffsetXmm));
+        if (!double.IsFinite(BackOffsetYmm) || Math.Abs(BackOffsetYmm) > 10000)
+            throw new ArgumentOutOfRangeException(nameof(BackOffsetYmm));
         if (cardWidthMm <= 0 || cardHeightMm <= 0) throw new ArgumentOutOfRangeException(nameof(cardWidthMm));
         if (StartSlot < 0 || StartSlot >= Capacity) throw new ArgumentOutOfRangeException(nameof(StartSlot));
         if (!Enum.IsDefined(typeof(SequenceFillDirection), FillDirection))
@@ -95,6 +127,10 @@ public sealed class SequencePrintSettings
         FillDirection = FillDirection,
         PaperOrientation = PaperOrientation,
         PaperFormatText = PaperFormatText,
+        CutStack = CutStack,
+        MirrorBack = MirrorBack,
+        BackOffsetXmm = BackOffsetXmm,
+        BackOffsetYmm = BackOffsetYmm,
         StartSlot = StartSlot,
         Side = Side,
         DrawCutMarks = DrawCutMarks,
@@ -181,18 +217,18 @@ public static class SequencePrintPlanner
 
         var capacity = settings.Capacity;
         var firstTraversalIndex = GetTraversalIndex(settings.StartSlot, settings);
-        var firstCapacity = capacity - firstTraversalIndex;
-        var startRecord = sheetIndex == 0 ? 0 : firstCapacity + (sheetIndex - 1) * capacity;
         var traversalStart = sheetIndex == 0 ? firstTraversalIndex : 0;
-        var available = capacity - traversalStart;
-        var count = Math.Min(available, recordCount - startRecord);
         var pitchX = settings.EffectiveHorizontalPitchMm(cardWidthMm);
         var pitchY = settings.EffectiveVerticalPitchMm(cardHeightMm);
 
-        var result = new List<SequenceSlotPlacement>(count);
-        for (var i = 0; i < count; i++)
+        var result = new List<SequenceSlotPlacement>(capacity - traversalStart);
+        for (var traversalIndex = traversalStart; traversalIndex < capacity; traversalIndex++)
         {
-            var traversalIndex = traversalStart + i;
+            var recordIndex = settings.CutStack
+                ? GetCutStackRecordIndex(traversalIndex, sheetIndex, firstTraversalIndex, sheetCount, capacity)
+                : GetSequentialRecordIndex(traversalIndex, sheetIndex, firstTraversalIndex, capacity);
+            if (recordIndex < 0 || recordIndex >= recordCount) continue;
+
             var (row, column) = GetCell(traversalIndex, settings);
             var slot = checked(row * settings.Columns + column);
             result.Add(new SequenceSlotPlacement(
@@ -200,13 +236,49 @@ public static class SequencePrintPlanner
                 slot,
                 row,
                 column,
-                startRecord + i,
+                recordIndex,
                 settings.MarginLeftMm + column * pitchX,
                 settings.MarginTopMm + row * pitchY,
                 cardWidthMm,
                 cardHeightMm));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Applies the recovered back-phase geometry. RetroaSpecchio mirrors logical
+    /// columns, then OffsetRetroX/Y are added to the final page coordinates.
+    /// Record identity and card pixels remain unchanged.
+    /// </summary>
+    public static SequenceSlotPlacement TransformForSide(
+        SequenceSlotPlacement placement,
+        double cardWidthMm,
+        double cardHeightMm,
+        SequencePrintSettings settings,
+        LayoutSide side)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate(cardWidthMm, cardHeightMm);
+        if (side != LayoutSide.Back) return placement;
+
+        var column = settings.MirrorBack
+            ? settings.Columns - 1 - placement.Column
+            : placement.Column;
+        var slot = checked(placement.Row * settings.Columns + column);
+        var x = settings.MarginLeftMm
+            + column * settings.EffectiveHorizontalPitchMm(cardWidthMm)
+            + settings.BackOffsetXmm;
+        var y = settings.MarginTopMm
+            + placement.Row * settings.EffectiveVerticalPitchMm(cardHeightMm)
+            + settings.BackOffsetYmm;
+
+        return placement with
+        {
+            SlotIndex = slot,
+            Column = column,
+            Xmm = x,
+            Ymm = y
+        };
     }
 
     public static (double WidthMm, double HeightMm) GetUsedExtent(
@@ -221,6 +293,41 @@ public static class SequencePrintPlanner
         return (
             settings.MarginLeftMm + (settings.Columns - 1) * pitchX + cardWidthMm,
             settings.MarginTopMm + (settings.Rows - 1) * pitchY + cardHeightMm);
+    }
+
+    private static int GetSequentialRecordIndex(
+        int traversalIndex,
+        int sheetIndex,
+        int firstTraversalIndex,
+        int capacity)
+    {
+        if (sheetIndex == 0)
+            return traversalIndex - firstTraversalIndex;
+        var firstCapacity = capacity - firstTraversalIndex;
+        return checked(firstCapacity + (sheetIndex - 1) * capacity + traversalIndex);
+    }
+
+    private static int GetCutStackRecordIndex(
+        int traversalIndex,
+        int sheetIndex,
+        int firstTraversalIndex,
+        int sheetCount,
+        int capacity)
+    {
+        // With the native first slot this reduces exactly to:
+        // recordIndex = traversalIndex * sheetCount + sheetIndex
+        // (one-based: (slotOrdinal - 1) * Pagine + Pagina).
+        // A managed non-zero first slot rotates the slot-major sequence so record 1
+        // still begins at the selected first-sheet cell. Cells skipped on sheet 1
+        // are visited last on the later sheets.
+        if (traversalIndex >= firstTraversalIndex)
+            return checked((traversalIndex - firstTraversalIndex) * sheetCount + sheetIndex);
+
+        if (sheetIndex == 0) return -1;
+        var trailingSlots = capacity - firstTraversalIndex;
+        return checked(trailingSlots * sheetCount
+            + traversalIndex * (sheetCount - 1)
+            + (sheetIndex - 1));
     }
 
     private static int GetTraversalIndex(int slot, SequencePrintSettings settings)
