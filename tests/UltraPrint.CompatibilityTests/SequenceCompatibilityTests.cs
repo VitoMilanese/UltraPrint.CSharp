@@ -198,7 +198,7 @@ internal static class SequenceCompatibilityTests
     "PaperOrientation": 1,
     "PaperFormatText": "A4 [21x29,7 cm]",
     "StartSlot": 1,
-    "Side": 2,
+    "Side": 0,
     "DrawCutMarks": true,
     "SinglePageMode": true
   }
