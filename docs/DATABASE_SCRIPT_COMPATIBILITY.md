@@ -60,7 +60,9 @@ The managed `Tabella.Trovarecord()` re-executes the current layout database/quer
 
 `WinFormsLegacyDatabaseHost` is registered for the lifetime of `MainForm`. It follows whichever layout is currently displayed, opens the same Access/FFM/DBF/Excel/CSV/text provider abstraction used by the database workspace, refreshes table names, and materializes the current query/table recordset for ScriptControl calls.
 
-This intentionally avoids a second script-only database configuration.
+When the normal **Database / Records** workspace is open for that same layout, `DatabaseWorkspaceRuntimeBridge` reads the exact selected `DataRowView` from its visible grid. That visible row, row index and row count take precedence over the host's fallback recordset. This means the compatibility layer now has the same current record the operator is looking at, which is the state required by the later `Carta.Record2Card` bridge.
+
+If the workspace is not open, the host falls back to its own materialized recordset using the same persisted database/query/table settings. This intentionally avoids a second script-only database configuration.
 
 ## Still unresolved: `Tabella.Carica`
 
@@ -74,6 +76,6 @@ For that reason `Carica` is documented in `LegacyScriptDatabaseContract` but is 
 
 - decode `Tabella.Carica` exactly;
 - map the old Tabella form's field-filter controls so `Trovarecord` can reproduce its QBE-style search UI rather than only the already-built SQL/table state;
-- bridge current record position bidirectionally between the visible Database / Records grid and the legacy script facade;
+- make script-driven record navigation update the visible Database / Records selection when that behavior is proven/required (visible selection -> script state already works);
 - recover any script-used `frmDatabase` control properties from real production `.vbs` files;
-- later wire `Carta.Record2Card` to the shared current-record state once its native parameter semantics are confirmed.
+- wire `Carta.Record2Card` to the now-shared current-record state once its native parameter semantics are confirmed.
