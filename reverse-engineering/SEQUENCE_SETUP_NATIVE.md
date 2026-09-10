@@ -36,6 +36,7 @@ The control IDs and native object getters correlate the relevant form controls a
 - `Verticale` -> id 68 / `+0x408`;
 - `FoglioPortrait` -> id 70 / `+0x410`;
 - `FoglioLandscape` -> id 71 / `+0x414`;
+- `cboDimensioni` -> id 72 / `+0x418`;
 - `MSFlexGrid1` -> id 75 / `+0x424`.
 
 The MSFlexGrid DISPIDs observed by the binary match the control typelib: `Rows=4`, `Cols=5`, `Row=10`, `Col=11`, `CellLeft=29`, `CellTop=30`, `CellWidth=31`, `CellHeight=32`, `ColWidth=57`, `RowHeight=58`.
@@ -51,7 +52,19 @@ Y = MargineAlto  + row    * (cardHeight + PassoVerticale)
 
 This proves that `MargineDestro`, despite its label, behaves as a left-origin X offset in the actual print path. It also proves that `PassoOrizzontale` / `PassoVerticale` are inter-card gaps, not full pitch values.
 
-The `Orizzontale` and `Verticale` branches in `cmdImposta_Click` select traversal order rather than card rotation: `Orizzontale` is row-major and `Verticale` is column-major. `FoglioPortrait` / `FoglioLandscape` are a separate paper-orientation pair and remain intentionally separate from fill direction.
+The `Orizzontale` and `Verticale` branches in `cmdImposta_Click` select traversal order rather than card rotation: `Orizzontale` is row-major and `Verticale` is column-major.
+
+## Paper orientation and page origin
+
+`FoglioLandscape_Click` stores Variant value `1` in the form orientation state and calls `cboDimensioni_Click`; `FoglioPortrait_Click` stores `0` and follows the same rebuild path. `cboDimensioni_Click` tests `FoglioPortrait.Value`, parses the selected dimensions, and writes the MSFlexGrid extender `Width` / `Height`. Portrait uses the parsed width/height in their original order; Landscape swaps them. The routine then calls `cmdImposta_Click`.
+
+This proves `FoglioPortrait` / `FoglioLandscape` are the **paper/grid orientation** pair and are independent of `Orizzontale` / `Verticale` record traversal. The exact `cboDimensioni` list/string-to-paper mapping is still a separate unresolved contract.
+
+The recovered `SmartFormDll.Report.PrintPage` public parameter names are `Pic`, `nzoom`, `Lato`, `MargineDx`, and `MargineTop`, confirming that UltraPrint supplies its computed X/top offsets to the printer/picture drawing path rather than deriving a new margin from the printer driver.
+
+VB6 Printer page coordinates define `(0,0)` at the physical page's upper-left edge. Modern `System.Drawing.Printing.PrintDocument`, when `OriginAtMargins` is false, exposes `PrintPageEventArgs.Graphics` at the upper-left corner of the printer's printable area. The managed sequence path therefore subtracts `PageSettings.HardMarginX` / `HardMarginY` (converted from hundredths of an inch to the current pixel PageUnit) before rendering. This restores the native physical-page coordinate system while leaving physically impossible output to driver clipping.
+
+The coordinate-system recovery does not prove that a current driver reports exactly the same hard-margin rectangle as the 2003 printer stack. That remains a real-device parity check rather than a reason to keep the known systematic printable-origin offset in managed output.
 
 ## Managed consequences
 
@@ -59,6 +72,6 @@ The managed `Pescarecord` implementation reproduces the proven observable contra
 
 The managed `PosizionaPagina` implementation exposes the recovered script method, uses a pure `LegacySequencePositioning` helper for the literal native arithmetic/clamping, drives the currently open managed Sequence workspace, and mirrors the native MSFlexGrid match with a red/bold record highlight.
 
-`LegacySequenceIniStore` now maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, `Orizzontale`, `Verticale`, and `PaginaSingola`. Unknown keys remain preserved. `Fronte`/`Retro`, `Taglio`, paper orientation and remaining device-specific setup stay unresolved until their exact output effects are proven.
+`LegacySequenceIniStore` maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, `Orizzontale`, `Verticale`, `FoglioPortrait`, `FoglioLandscape`, and `PaginaSingola`. Unknown keys remain preserved. `Fronte`/`Retro`, `Taglio`, `cboDimensioni` paper selection and remaining device-specific setup stay unresolved until their exact output effects are proven.
 
-The managed planner uses `MargineDestro` as the X offset, treats `Passo*` as gaps, and supports both recovered fill orders. Managed `.sequence.json` version 2 stores this corrected interpretation; version 1 full-pitch values are migrated to gaps by subtracting the card width/height so existing managed layouts keep the same physical placement.
+The managed planner uses `MargineDestro` as the X offset, treats `Passo*` as gaps, and supports both recovered fill orders. `SequencePrintService` applies recovered paper orientation to `PageSettings.Landscape` and translates the .NET printable-area origin back to the physical-page origin before rendering. Managed `.sequence.json` version 3 persists orientation; version 2 retains correct gap/fill semantics and migrates to Portrait, while version 1 full-pitch values are migrated to gaps by subtracting card width/height.

@@ -6,6 +6,12 @@ public enum SequenceFillDirection
     Vertical = 1
 }
 
+public enum SequencePaperOrientation
+{
+    Portrait = 0,
+    Landscape = 1
+}
+
 /// <summary>
 /// Managed model for the recovered Sequenza sheet-imposition workflow. Values are
 /// stored in millimetres because the legacy editor and card model are millimetre-
@@ -38,6 +44,7 @@ public sealed class SequencePrintSettings
     public double VerticalPitchMm { get; set; }
 
     public SequenceFillDirection FillDirection { get; set; } = SequenceFillDirection.Horizontal;
+    public SequencePaperOrientation PaperOrientation { get; set; } = SequencePaperOrientation.Portrait;
     public int StartSlot { get; set; }
     public LayoutSide Side { get; set; } = LayoutSide.Front;
     public bool DrawCutMarks { get; set; }
@@ -66,6 +73,8 @@ public sealed class SequencePrintSettings
         if (StartSlot < 0 || StartSlot >= Capacity) throw new ArgumentOutOfRangeException(nameof(StartSlot));
         if (!Enum.IsDefined(typeof(SequenceFillDirection), FillDirection))
             throw new ArgumentOutOfRangeException(nameof(FillDirection));
+        if (!Enum.IsDefined(typeof(SequencePaperOrientation), PaperOrientation))
+            throw new ArgumentOutOfRangeException(nameof(PaperOrientation));
     }
 
     public SequencePrintSettings Clone() => new()
@@ -77,6 +86,7 @@ public sealed class SequencePrintSettings
         HorizontalPitchMm = HorizontalPitchMm,
         VerticalPitchMm = VerticalPitchMm,
         FillDirection = FillDirection,
+        PaperOrientation = PaperOrientation,
         StartSlot = StartSlot,
         Side = Side,
         DrawCutMarks = DrawCutMarks,
@@ -118,11 +128,6 @@ public static class LegacySequencePositioning
         if (recordsPerPage <= 0) throw new ArgumentOutOfRangeException(nameof(recordsPerPage));
         if (pageCount <= 0) return 1;
 
-        // Native PosizionaPagina literally performs:
-        //   Pagina = Fix(NumRecord / RecordxPagina) + 1
-        // or, with PaginaSingola checked:
-        //   Pagina = NumRecord Mod Pagine
-        // Pagina_Change then resets any value outside 1..Pagine to 1.
         var rawPage = singlePageMode
             ? recordNumber % pageCount
             : checked((int)Math.Truncate(recordNumber / (double)recordsPerPage) + 1);

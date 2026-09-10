@@ -10,7 +10,7 @@ namespace UltraPrint.Legacy.Data;
 /// </summary>
 public static class ManagedSequenceStore
 {
-    private const int CurrentVersion = 2;
+    private const int CurrentVersion = 3;
 
     public static string? GetPath(CardLayout layout) =>
         string.IsNullOrWhiteSpace(layout.SourcePath) ? null : layout.SourcePath + ".sequence.json";
@@ -30,6 +30,12 @@ public static class ManagedSequenceStore
             {
                 case CurrentVersion:
                     break;
+                case 2:
+                    // Version 2 already uses native Passo gap semantics. Paper
+                    // orientation was not persisted yet and therefore retains the
+                    // native/default portrait value after deserialization.
+                    settings.PaperOrientation = SequencePaperOrientation.Portrait;
+                    break;
                 case 1:
                     // Version 1 treated HorizontalPitchMm/VerticalPitchMm as the full
                     // slot pitch. Native recovery proved Passo* is only the gap between
@@ -45,6 +51,7 @@ public static class ManagedSequenceStore
                             ? settings.VerticalPitchMm - layout.HeightMm
                             : 0);
                     settings.FillDirection = SequenceFillDirection.Horizontal;
+                    settings.PaperOrientation = SequencePaperOrientation.Portrait;
                     break;
                 default:
                     return CreateDefault(layout);
@@ -80,6 +87,7 @@ public static class ManagedSequenceStore
         HorizontalPitchMm = 0,
         VerticalPitchMm = 0,
         FillDirection = SequenceFillDirection.Horizontal,
+        PaperOrientation = SequencePaperOrientation.Portrait,
         StartSlot = 0,
         Side = LayoutSide.Front,
         DrawCutMarks = false

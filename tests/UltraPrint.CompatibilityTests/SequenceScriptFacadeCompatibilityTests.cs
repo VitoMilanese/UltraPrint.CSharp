@@ -48,6 +48,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
                 HorizontalPitchMm = 2.5,
                 VerticalPitchMm = 2.75,
                 FillDirection = SequenceFillDirection.Vertical,
+                PaperOrientation = SequencePaperOrientation.Landscape,
                 StartSlot = 2,
                 Side = LayoutSide.Back,
                 SinglePageMode = true,
@@ -64,6 +65,8 @@ internal static class SequenceScriptFacadeCompatibilityTests
             AssertEqual("2,75", ini.Get("Sequenza", "PassoVerticale")!, "legacy .Seq vertical Passo gap");
             AssertEqual("0", ini.Get("Sequenza", "Orizzontale")!, "legacy .Seq horizontal option");
             AssertEqual("1", ini.Get("Sequenza", "Verticale")!, "legacy .Seq vertical option");
+            AssertEqual("0", ini.Get("Sequenza", "FoglioPortrait")!, "legacy .Seq portrait option");
+            AssertEqual("1", ini.Get("Sequenza", "FoglioLandscape")!, "legacy .Seq landscape option");
             AssertEqual("1", ini.Get("Sequenza", "PaginaSingola")!, "legacy .Seq PaginaSingola");
             AssertEqual("KEEP", ini.Get("Sequenza", "CustomLegacyKey")!, "unknown legacy .Seq key preserved");
 
@@ -76,6 +79,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
                 HorizontalPitchMm = 0,
                 VerticalPitchMm = 0,
                 FillDirection = SequenceFillDirection.Horizontal,
+                PaperOrientation = SequencePaperOrientation.Portrait,
                 StartSlot = 0,
                 Side = LayoutSide.Back,
                 DrawCutMarks = true
@@ -88,6 +92,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
             AssertNearly(2.5, loaded.HorizontalPitchMm, 0.0001, "legacy .Seq loads horizontal Passo gap");
             AssertNearly(2.75, loaded.VerticalPitchMm, 0.0001, "legacy .Seq loads vertical Passo gap");
             AssertEqual(SequenceFillDirection.Vertical, loaded.FillDirection, "legacy .Seq loads Verticale column-major mode");
+            AssertEqual(SequencePaperOrientation.Landscape, loaded.PaperOrientation, "legacy .Seq loads FoglioLandscape paper orientation");
             AssertTrue(loaded.SinglePageMode, "legacy .Seq loads PaginaSingola");
             AssertEqual(LayoutSide.Back, loaded.Side, "unresolved legacy side controls preserve managed baseline");
             AssertTrue(loaded.DrawCutMarks, "unresolved legacy Taglio preserves managed baseline");

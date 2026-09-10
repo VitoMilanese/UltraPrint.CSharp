@@ -26,6 +26,8 @@ public static class LegacySequenceIniStore
         "PassoVerticale",
         "Orizzontale",
         "Verticale",
+        "FoglioPortrait",
+        "FoglioLandscape",
         "PaginaSingola"
     ];
 
@@ -78,10 +80,17 @@ public static class LegacySequenceIniStore
         else if (vertical == true && horizontal != true)
             result.FillDirection = SequenceFillDirection.Vertical;
 
+        var portrait = ReadOptionalCheckValue(ini, "FoglioPortrait");
+        var landscape = ReadOptionalCheckValue(ini, "FoglioLandscape");
+        if (portrait == true && landscape != true)
+            result.PaperOrientation = SequencePaperOrientation.Portrait;
+        else if (landscape == true && portrait != true)
+            result.PaperOrientation = SequencePaperOrientation.Landscape;
+
         result.SinglePageMode = ReadCheckValue(ini, "PaginaSingola", result.SinglePageMode);
 
-        // Fronte/Retro, paper orientation, Taglio and other native controls still
-        // need printing/device proof before they can safely mutate the managed model.
+        // Fronte/Retro, Taglio, cboDimensioni paper selection and other native
+        // controls still need printing/device proof before they mutate managed state.
         var capacity = Math.Max(1, result.Rows * result.Columns);
         if (result.StartSlot >= capacity) result.StartSlot = capacity - 1;
         result.Validate(layout.WidthMm, layout.HeightMm);
@@ -111,6 +120,8 @@ public static class LegacySequenceIniStore
         ini.Set(SectionName, "PassoVerticale", FormatNumber(settings.VerticalPitchMm));
         ini.Set(SectionName, "Orizzontale", settings.FillDirection == SequenceFillDirection.Horizontal ? "1" : "0");
         ini.Set(SectionName, "Verticale", settings.FillDirection == SequenceFillDirection.Vertical ? "1" : "0");
+        ini.Set(SectionName, "FoglioPortrait", settings.PaperOrientation == SequencePaperOrientation.Portrait ? "1" : "0");
+        ini.Set(SectionName, "FoglioLandscape", settings.PaperOrientation == SequencePaperOrientation.Landscape ? "1" : "0");
         ini.Set(SectionName, "PaginaSingola", settings.SinglePageMode ? "1" : "0");
         ini.Save(fullPath);
     }

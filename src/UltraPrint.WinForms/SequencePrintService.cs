@@ -7,9 +7,8 @@ namespace UltraPrint.WinForms;
 
 /// <summary>
 /// Managed replacement for the core Sequenza sheet-imposition path. Multiple
-/// database records are rendered on one physical sheet using rows/columns,
-/// margins, pitch and a selectable first slot. Front/back uses consecutive
-/// physical pages with the same record/slot assignment.
+/// database records are rendered on one physical sheet using the recovered
+/// rows/columns, offsets, Passo gaps, fill order and paper orientation.
 /// </summary>
 public sealed class SequencePrintService
 {
@@ -23,17 +22,20 @@ public sealed class SequencePrintService
         _pageSettings = (PageSettings)document.DefaultPageSettings.Clone();
     }
 
-    public (double WidthMm, double HeightMm) GetPageSizeMm()
+    public (double WidthMm, double HeightMm) GetPageSizeMm(SequencePrintSettings settings)
     {
-        var bounds = _pageSettings.Bounds;
+        ArgumentNullException.ThrowIfNull(settings);
+        using var document = CreateBaseDocument("UltraPrint sequence page size", settings);
+        var bounds = document.DefaultPageSettings.Bounds;
         var width = bounds.Width * 25.4 / 100.0;
         var height = bounds.Height * 25.4 / 100.0;
         return (width, height);
     }
 
-    public void ShowPageSetup(IWin32Window owner)
+    public void ShowPageSetup(IWin32Window owner, SequencePrintSettings settings)
     {
-        using var document = CreateBaseDocument("UltraPrint sequence page setup");
+        ArgumentNullException.ThrowIfNull(settings);
+        using var document = CreateBaseDocument("UltraPrint sequence page setup", settings);
         using var dialog = new PageSetupDialog
         {
             Document = document,
@@ -45,6 +47,9 @@ public sealed class SequencePrintService
         if (dialog.ShowDialog(owner) != DialogResult.OK) return;
         _printerSettings = (PrinterSettings)document.PrinterSettings.Clone();
         _pageSettings = (PageSettings)document.DefaultPageSettings.Clone();
+        settings.PaperOrientation = document.DefaultPageSettings.Landscape
+            ? SequencePaperOrientation.Landscape
+            : SequencePaperOrientation.Portrait;
     }
 
     public void ShowPreview(
@@ -121,6 +126,9 @@ public sealed class SequencePrintService
         if (dialog.ShowDialog(owner) != DialogResult.OK) return;
         _printerSettings = (PrinterSettings)document.PrinterSettings.Clone();
         _pageSettings = (PageSettings)document.DefaultPageSettings.Clone();
+        settings.PaperOrientation = document.DefaultPageSettings.Landscape
+            ? SequencePaperOrientation.Landscape
+            : SequencePaperOrientation.Portrait;
         document.Print();
     }
 
@@ -150,7 +158,8 @@ public sealed class SequencePrintService
         var sideIndex = 0;
 
         var document = CreateBaseDocument(
-            string.IsNullOrWhiteSpace(layout.Name) ? "UltraPrint sequence" : layout.Name + " sequence");
+            string.IsNullOrWhiteSpace(layout.Name) ? "UltraPrint sequence" : layout.Name + " sequence",
+            settings);
         document.PrintPage += (_, e) =>
         {
             var graphics = e.Graphics;
@@ -164,6 +173,13 @@ public sealed class SequencePrintService
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            // VB6 Printer coordinates used by the native Report.PrintPage path are
+            // measured from the physical page's upper-left corner. PrintDocument's
+            // default Graphics origin is the upper-left of the printer's printable
+            // area, so subtract the hard margins to restore the legacy coordinate
+            // system. The printer driver still clips physically unprintable pixels.
+            TranslateToPhysicalPageOrigin(graphics, e.PageSettings);
 
             var placements = SequencePrintPlanner.GetSheetPlacements(
                 records.Count,
@@ -206,15 +222,28 @@ public sealed class SequencePrintService
         return document;
     }
 
-    private PrintDocument CreateBaseDocument(string name)
+    private PrintDocument CreateBaseDocument(string name, SequencePrintSettings settings)
     {
         var document = new PrintDocument
         {
             DocumentName = name,
-            PrinterSettings = (PrinterSettings)_printerSettings.Clone()
+            PrinterSettings = (PrinterSettings)_printerSettings.Clone(),
+            OriginAtMargins = false
         };
-        document.DefaultPageSettings = (PageSettings)_pageSettings.Clone();
+        var pageSettings = (PageSettings)_pageSettings.Clone();
+        pageSettings.Landscape = settings.PaperOrientation == SequencePaperOrientation.Landscape;
+        document.DefaultPageSettings = pageSettings;
         return document;
+    }
+
+    internal static void TranslateToPhysicalPageOrigin(Graphics graphics, PageSettings pageSettings)
+    {
+        ArgumentNullException.ThrowIfNull(graphics);
+        ArgumentNullException.ThrowIfNull(pageSettings);
+        var offsetX = pageSettings.HardMarginX / 100f * graphics.DpiX;
+        var offsetY = pageSettings.HardMarginY / 100f * graphics.DpiY;
+        if (Math.Abs(offsetX) > float.Epsilon || Math.Abs(offsetY) > float.Epsilon)
+            graphics.TranslateTransform(-offsetX, -offsetY, MatrixOrder.Append);
     }
 
     private static RectangleF MmRectangleToPixels(SequenceSlotPlacement placement, Graphics graphics) =>

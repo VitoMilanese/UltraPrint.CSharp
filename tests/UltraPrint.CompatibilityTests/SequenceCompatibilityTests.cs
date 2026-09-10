@@ -33,6 +33,7 @@ internal static class SequenceCompatibilityTests
             HorizontalPitchMm = 5,
             VerticalPitchMm = 6,
             FillDirection = SequenceFillDirection.Horizontal,
+            PaperOrientation = SequencePaperOrientation.Landscape,
             StartSlot = 2,
             Side = LayoutSide.Unknown
         };
@@ -60,7 +61,7 @@ internal static class SequenceCompatibilityTests
 
         var vertical = settings.Clone();
         vertical.FillDirection = SequenceFillDirection.Vertical;
-        vertical.StartSlot = 1; // physical row 0, column 1; traversal index 2 in a 2x3 grid
+        vertical.StartSlot = 1;
         AssertEqual(2, SequencePrintPlanner.GetSheetCount(5, vertical), "vertical fill start slot affects first sheet capacity in column-major order");
         var verticalFirst = SequencePrintPlanner.GetSheetPlacements(5, 85, 54, vertical, 0);
         AssertEqual(4, verticalFirst.Count, "vertical fill first sheet capacity");
@@ -70,6 +71,7 @@ internal static class SequenceCompatibilityTests
         AssertEqual(5, verticalFirst[3].SlotIndex, "vertical fill finishes next column");
         AssertNearly(97, verticalFirst[0].Xmm, 0.001, "vertical fill first X");
         AssertNearly(71, verticalFirst[1].Ymm, 0.001, "vertical fill second Y");
+        AssertEqual(SequencePaperOrientation.Landscape, vertical.PaperOrientation, "clone preserves paper orientation");
     }
 
     private static void TestLegacyPositioning()
@@ -112,6 +114,7 @@ internal static class SequenceCompatibilityTests
             HorizontalPitchMm = 2.5,
             VerticalPitchMm = 3.25,
             FillDirection = SequenceFillDirection.Vertical,
+            PaperOrientation = SequencePaperOrientation.Landscape,
             StartSlot = 1,
             Side = LayoutSide.Back,
             SinglePageMode = true,
@@ -127,11 +130,35 @@ internal static class SequenceCompatibilityTests
         AssertNearly(2.5, loaded.HorizontalPitchMm, 0.001, "sequence store horizontal Passo gap");
         AssertNearly(3.25, loaded.VerticalPitchMm, 0.001, "sequence store vertical Passo gap");
         AssertEqual(SequenceFillDirection.Vertical, loaded.FillDirection, "sequence store fill direction");
+        AssertEqual(SequencePaperOrientation.Landscape, loaded.PaperOrientation, "sequence store paper orientation");
         AssertEqual(1, loaded.StartSlot, "sequence store first slot");
         AssertEqual(LayoutSide.Back, loaded.Side, "sequence store side");
         AssertTrue(loaded.SinglePageMode, "sequence store single-page mode");
         AssertTrue(loaded.DrawCutMarks, "sequence store cut marks");
         AssertTrue(File.Exists(layout.SourcePath + ".sequence.json"), "sequence setup uses non-destructive sidecar");
+
+        File.WriteAllText(layout.SourcePath + ".sequence.json", """
+{
+  "Version": 2,
+  "Settings": {
+    "Rows": 3,
+    "Columns": 2,
+    "MarginLeftMm": 4.5,
+    "MarginTopMm": 8.25,
+    "HorizontalPitchMm": 2.5,
+    "VerticalPitchMm": 3.25,
+    "FillDirection": 1,
+    "StartSlot": 1,
+    "Side": 2,
+    "DrawCutMarks": true,
+    "SinglePageMode": true
+  }
+}
+""");
+        var migratedV2 = ManagedSequenceStore.Load(layout);
+        AssertNearly(2.5, migratedV2.HorizontalPitchMm, 0.001, "v2 native Passo gap is preserved");
+        AssertEqual(SequenceFillDirection.Vertical, migratedV2.FillDirection, "v2 fill direction is preserved");
+        AssertEqual(SequencePaperOrientation.Portrait, migratedV2.PaperOrientation, "v2 missing paper orientation migrates to portrait");
 
         File.WriteAllText(layout.SourcePath + ".sequence.json", """
 {
@@ -154,6 +181,7 @@ internal static class SequenceCompatibilityTests
         AssertNearly(2.5, migrated.HorizontalPitchMm, 0.001, "v1 full horizontal pitch migrates to native Passo gap");
         AssertNearly(3.25, migrated.VerticalPitchMm, 0.001, "v1 full vertical pitch migrates to native Passo gap");
         AssertEqual(SequenceFillDirection.Horizontal, migrated.FillDirection, "v1 managed layouts preserve historical row-major fill");
+        AssertEqual(SequencePaperOrientation.Portrait, migrated.PaperOrientation, "v1 managed layouts migrate to portrait");
     }
 
     private static void AssertTrue(bool condition, string message)

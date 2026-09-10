@@ -21,6 +21,7 @@ internal sealed class SequenceWorkspaceForm : Form
     private readonly NumericUpDown _pitchX = Number(0, 1000, 0, 2);
     private readonly NumericUpDown _pitchY = Number(0, 1000, 0, 2);
     private readonly ComboBox _fillDirection = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+    private readonly ComboBox _paperOrientation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly NumericUpDown _startSlot = Number(1, 10000, 1, 0);
     private readonly NumericUpDown _copies = Number(1, 10000, 1, 0);
     private readonly ComboBox _side = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
@@ -48,6 +49,7 @@ internal sealed class SequenceWorkspaceForm : Form
         StartPosition = FormStartPosition.CenterParent;
 
         _fillDirection.Items.AddRange(new object[] { "Horizontal (row-major)", "Vertical (column-major)" });
+        _paperOrientation.Items.AddRange(new object[] { "Portrait", "Landscape" });
         _side.Items.AddRange(new object[] { "Front", "Back", "Front + Back" });
         Controls.Add(BuildUi());
         var statusStrip = new StatusStrip();
@@ -89,7 +91,7 @@ internal sealed class SequenceWorkspaceForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             ColumnCount = 2,
-            RowCount = 17,
+            RowCount = 18,
             Padding = new Padding(4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
@@ -107,6 +109,7 @@ internal sealed class SequenceWorkspaceForm : Form
         AddSetting(panel, ref row, "Horizontal gap / Passo (mm):", _pitchX);
         AddSetting(panel, ref row, "Vertical gap / Passo (mm):", _pitchY);
         AddSetting(panel, ref row, "Fill direction:", _fillDirection);
+        AddSetting(panel, ref row, "Paper orientation:", _paperOrientation);
         AddSetting(panel, ref row, "First slot:", _startSlot);
         AddSetting(panel, ref row, "Side:", _side);
         panel.Controls.Add(_cutMarks, 1, row++);
@@ -184,6 +187,7 @@ internal sealed class SequenceWorkspaceForm : Form
         foreach (var numeric in new[] { _rows, _columns, _marginLeft, _marginTop, _pitchX, _pitchY, _startSlot })
             numeric.ValueChanged += (_, _) => SettingsChanged();
         _fillDirection.SelectedIndexChanged += (_, _) => SettingsChanged();
+        _paperOrientation.SelectedIndexChanged += (_, _) => SettingsChanged();
         _side.SelectedIndexChanged += (_, _) => SettingsChanged();
         _cutMarks.CheckedChanged += (_, _) => SettingsChanged();
         _copies.ValueChanged += (_, _) =>
@@ -213,6 +217,7 @@ internal sealed class SequenceWorkspaceForm : Form
             _pitchX.Value = Clamp((decimal)_settings.HorizontalPitchMm, _pitchX);
             _pitchY.Value = Clamp((decimal)_settings.VerticalPitchMm, _pitchY);
             _fillDirection.SelectedIndex = _settings.FillDirection == SequenceFillDirection.Vertical ? 1 : 0;
+            _paperOrientation.SelectedIndex = _settings.PaperOrientation == SequencePaperOrientation.Landscape ? 1 : 0;
             UpdateStartSlotMaximum();
             _startSlot.Value = Clamp(_settings.StartSlot + 1, _startSlot);
             _side.SelectedIndex = _settings.Side switch
@@ -247,6 +252,9 @@ internal sealed class SequenceWorkspaceForm : Form
             _settings.FillDirection = _fillDirection.SelectedIndex == 1
                 ? SequenceFillDirection.Vertical
                 : SequenceFillDirection.Horizontal;
+            _settings.PaperOrientation = _paperOrientation.SelectedIndex == 1
+                ? SequencePaperOrientation.Landscape
+                : SequencePaperOrientation.Portrait;
             _settings.StartSlot = (int)_startSlot.Value - 1;
             _settings.Side = _side.SelectedIndex switch
             {
@@ -330,7 +338,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void UpdatePreview()
     {
-        var (pageWidth, pageHeight) = _printService.GetPageSizeMm();
+        var (pageWidth, pageHeight) = _printService.GetPageSizeMm(_settings);
         _preview.Layout = _layout;
         _preview.Settings = _settings;
         _preview.PageWidthMm = pageWidth;
@@ -368,8 +376,8 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void PageSetup()
     {
-        _printService.ShowPageSetup(this);
-        UpdatePreview();
+        _printService.ShowPageSetup(this, _settings);
+        ApplySettingsToControls();
     }
 
     private void LoadSetup()
