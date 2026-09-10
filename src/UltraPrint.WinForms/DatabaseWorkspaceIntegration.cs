@@ -39,14 +39,20 @@ internal static class DatabaseWorkspaceIntegration
             if (workspace is null || workspace.IsDisposed || !ReferenceEquals(workspaceLayout, layout))
             {
                 workspace?.Dispose();
-                workspace = new DatabaseWorkspaceForm(layout);
+                var openedWorkspace = new DatabaseWorkspaceForm(layout);
+                workspace = openedWorkspace;
                 workspaceLayout = layout;
-                workspace.FormClosed += (_, _) =>
+                scriptHost.AttachWorkspace(openedWorkspace, layout);
+                openedWorkspace.FormClosed += (_, _) =>
                 {
-                    workspace = null;
-                    workspaceLayout = null;
+                    scriptHost.DetachWorkspace(openedWorkspace);
+                    if (ReferenceEquals(workspace, openedWorkspace))
+                    {
+                        workspace = null;
+                        workspaceLayout = null;
+                    }
                 };
-                workspace.Show(form);
+                openedWorkspace.Show(form);
             }
             else
             {
