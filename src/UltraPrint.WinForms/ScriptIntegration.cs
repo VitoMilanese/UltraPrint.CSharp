@@ -25,6 +25,10 @@ internal static class ScriptIntegration
         {
             var canvas = FindControl<LayoutCanvas>(form);
             var layout = canvas?.Layout;
+
+            var mainFormHost = new WinFormsLegacyMainFormHost(form, canvas);
+            LegacyScriptMainFormHostRegistry.Current = mainFormHost;
+
             WinFormsLegacyCartaHost? cartaHost = null;
             if (canvas is not null && layout is not null)
             {
@@ -33,8 +37,12 @@ internal static class ScriptIntegration
             }
 
             var workspace = new ScriptWorkspaceForm(layout);
-            if (cartaHost is not null)
-                workspace.FormClosed += (_, _) => LegacyScriptCartaHostRegistry.ClearIfCurrent(cartaHost);
+            workspace.FormClosed += (_, _) =>
+            {
+                LegacyScriptMainFormHostRegistry.ClearIfCurrent(mainFormHost);
+                if (cartaHost is not null)
+                    LegacyScriptCartaHostRegistry.ClearIfCurrent(cartaHost);
+            };
             workspace.Show(form);
         };
         tools.DropDownItems.Add(item);

@@ -187,7 +187,8 @@ public sealed record LegacyScriptCoreFacadeSet(
     LegacyScriptFunctionsFacade Funzioni,
     LegacyScriptFileFacade File,
     LegacyScriptAppFacade App,
-    LegacyScriptCartaFacade? Carta = null);
+    LegacyScriptCartaFacade? Carta = null,
+    LegacyScriptMainFormFacade? Mainform = null);
 
 /// <summary>
 /// Registers only managed objects whose current member contracts are supported by
@@ -200,7 +201,8 @@ public static class LegacyScriptCoreFacadeRegistration
         LegacyScriptSession session,
         string applicationDirectory,
         string executableName = "UltraPrint",
-        ILegacyScriptCartaHost? cartaHost = null)
+        ILegacyScriptCartaHost? cartaHost = null,
+        ILegacyScriptMainFormHost? mainFormHost = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var variables = new LegacyScriptVariableTable();
@@ -208,12 +210,15 @@ public static class LegacyScriptCoreFacadeRegistration
         var app = new LegacyScriptAppFacade(applicationDirectory, executableName);
         var file = new LegacyScriptFileFacade();
         var host = new LegacyScriptHostFacade(session.RequestUnload);
+        var effectiveMainFormHost = mainFormHost ?? LegacyScriptMainFormHostRegistry.Current;
+        var mainform = effectiveMainFormHost is null ? null : new LegacyScriptMainFormFacade(effectiveMainFormHost);
         var effectiveCartaHost = cartaHost ?? LegacyScriptCartaHostRegistry.Current;
         var carta = effectiveCartaHost is null ? null : new LegacyScriptCartaFacade(effectiveCartaHost);
 
-        // Keep the relative native AddObjects order for every managed facade currently
-        // available: Me -> Carta -> Fn -> Funzioni -> File -> App.
+        // Preserve the relative native AddObjects order for every managed facade currently
+        // available: Me -> Mainform -> Carta -> Fn -> Funzioni -> File -> App.
         session.RegisterObject("Me", host, addMembers: true);
+        if (mainform is not null) session.RegisterObject("Mainform", mainform, addMembers: true);
         if (carta is not null) session.RegisterObject("Carta", carta, addMembers: true);
 
         // Native AddObjects resolves both "Fn" and "Funzioni" through global
@@ -223,6 +228,6 @@ public static class LegacyScriptCoreFacadeRegistration
         session.RegisterObject("Funzioni", funzioni, addMembers: true);
         session.RegisterObject("File", file, addMembers: true);
         session.RegisterObject("App", app, addMembers: true);
-        return new LegacyScriptCoreFacadeSet(variables, funzioni, file, app, carta);
+        return new LegacyScriptCoreFacadeSet(variables, funzioni, file, app, carta, mainform);
     }
 }

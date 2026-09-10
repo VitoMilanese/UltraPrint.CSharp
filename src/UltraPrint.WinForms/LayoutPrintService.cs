@@ -69,6 +69,19 @@ public sealed class LayoutPrintService
         document.Print();
     }
 
+    /// <summary>
+    /// Prints with the currently selected/default Windows printer without presenting a dialog.
+    /// This is the closest managed equivalent of the script-callable MainForm.StampaRecord path;
+    /// device-specific card-printer handling is layered separately as it is recovered.
+    /// </summary>
+    public void PrintDirect(CardLayout layout, LayoutSide side, LayoutCanvas renderer)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(renderer);
+        using var document = CreateLayoutDocument(layout, side, renderer);
+        document.Print();
+    }
+
     private PrintDocument CreateLayoutDocument(CardLayout layout, LayoutSide side, LayoutCanvas renderer)
     {
         var document = CreateBaseDocument(string.IsNullOrWhiteSpace(layout.Name) ? "UltraPrint layout" : layout.Name);
