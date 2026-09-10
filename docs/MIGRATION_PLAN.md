@@ -90,7 +90,7 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 
 ## Phase 6 — sequence printing and devices
 
-- [ ] implement `Sequenza` sheet/page imposition, rows/columns, margins, pitch and front/back pages
+- [~] implement `Sequenza` sheet/page imposition: managed rows/columns, left/top margins, horizontal/vertical pitch, first-slot selection, sheet navigation, Front/Back/Both, cut marks, Page Setup and current/all sheet preview/print are implemented; exact native setup persistence and printer-specific duplex transforms remain
 - [ ] printer/device profiles (`frmDispositivi`)
 - [ ] card-printer adapter interfaces
 - [ ] magnetic Track 1/2/3 configuration and encoding (`frmTracce`, `frmMostraBanda`)
