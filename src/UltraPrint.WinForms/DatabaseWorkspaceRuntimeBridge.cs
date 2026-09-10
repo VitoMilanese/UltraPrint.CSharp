@@ -20,6 +20,7 @@ internal sealed class DatabaseWorkspaceRuntimeBridge
         _layout = layout ?? throw new ArgumentNullException(nameof(layout));
     }
 
+    public DatabaseWorkspaceForm Workspace => _workspace;
     public CardLayout Layout => _layout;
     public bool IsAvailable => !_workspace.IsDisposed;
 
