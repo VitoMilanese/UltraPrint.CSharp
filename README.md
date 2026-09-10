@@ -67,11 +67,12 @@ Implemented sequence/sheet-print workflow:
 - Recovered `FoglioPortrait` / `FoglioLandscape` paper orientation, kept separate from record fill direction.
 - Sequence printing compensates modern `PrintDocument` hard-margin origin so UltraPrint coordinates remain measured from the physical page edge; the driver still clips physically unprintable pixels.
 - Recovered `SoloFronte`, `FronteRetro` and `SoloRetro` output modes, plus horizontal back-slot mirroring via `RetroaSpecchio` and signed `OffsetRetroX` / `OffsetRetroY` corrections.
+- Recovered native `Pausa` / `Riprendi` cooperative pause behavior and `cmdStop` semantics: **Print all finishes the current logical sheet and then stops**, including the matching back phase in `FronteRetro`; live sheet/side progress is shown while printing.
 - Optional crop marks remain a managed-only convenience and are deliberately not serialized as legacy `Taglio`.
 - Database-record imposition reuses the same query/table/binding state as Database / Records; template-only repeated-card mode is also available.
 - Legacy `[Sequenza]` `.Seq` setup persistence covers the proven controls including `Taglio`, `cboDimensioni`, output mode, back mirror and back offsets while preserving unknown keys and transient `Fronte` / `Retro` state.
 - Script-visible `Sequenza` / `Stampa` aliases expose recovered `Pescarecord`, `PosizionaPagina`, `ScriviSetup` and `LeggiSetup` behavior.
-- Managed `.sequence.json` v5 persists the recovered sheet format, cut-and-stack and back-side geometry state; v1-v4 migrate without changing established placement/side behavior.
+- Managed `.sequence.json` v5 persists the recovered sheet format, cut-and-stack and back-side geometry state; v1-v4 migrate without changing established placement/side behavior. Pause/Stop/progress remain transient job state.
 - The supplied `samples/legacy/Campo.ini` is copied to the WinForms output as `Campo.ini`, matching the native `App.Path\Campo.ini` lookup convention.
 
 Implemented operator/security compatibility layer:
@@ -112,7 +113,7 @@ Implemented scripting compatibility foundation:
 
 This scripting layer remains intentionally partial. The main remaining compatibility gap is the callable member surface behind `Carta`, `Mainform`, database/table, sequence/print and device objects, plus production-safe automatic layout lifecycle integration and exact error-438 editor remapping. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md) and [`docs/SCRIPT_OBJECT_MODEL.md`](docs/SCRIPT_OBJECT_MODEL.md).
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex validation, print progress/pause/cancel, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex validation, the separate database-batch `frmPrinting` `Inizia`/`Annulla`/`Intervallo` shell, device-specific print status/cancel, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -139,7 +140,7 @@ dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.Compatibilit
 5. Use **Database -> Database / Records...** to open an `.mdb`, `.ffm`, `.dbf`, `.xls/.xlsx`, `.csv`, `.txt` or `.dat` source.
 6. Open a table or run SQL, bind card fields to database columns, and navigate records while watching the card preview update.
 7. Print/preview the current record or all loaded records.
-8. Use **Sequence -> Sequence / Sheet printing...** to arrange records or template copies on sheets; choose legacy sheet format, Horizontal/Vertical fill, Taglio cut-and-stack mode, Portrait/Landscape orientation and front/back mirror/offset settings, then preview or print the current/all logical sheets.
+8. Use **Sequence -> Sequence / Sheet printing...** to arrange records or template copies on sheets; choose legacy sheet format, Horizontal/Vertical fill, Taglio cut-and-stack mode, Portrait/Landscape orientation and front/back mirror/offset settings. During direct printing use **Pause/Resume**; **Stop** on Print all finishes the current logical sheet before ending the job.
 9. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
 10. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered; interactive legacy macros use the managed prompt/file/folder/computer dialogs.
 11. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.

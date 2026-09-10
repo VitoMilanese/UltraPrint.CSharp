@@ -1,6 +1,6 @@
 # Sequenza / sheet-print compatibility
 
-UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 methods include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, the front/back phase controls, print-mode controls, page controls and row/column/margin/spacing handlers.
+UltraPrint 2.2.115 contains a dedicated `Sequenza` form for arranging multiple card records on physical sheets. Recovered VB6 methods include `Pescarecord`, `PosizionaPagina`, `ScriviSetup`, `LeggiSetup`, `StampaPagina_Click`, `StampaTutte_Click`, `Pausa_Click`, `cmdStop_Click`, the front/back phase controls, print-mode controls, page controls and row/column/margin/spacing handlers.
 
 The managed replacement exposes the visible workflow through **Sequence -> Sequence / Sheet printing...** and exposes the proven ScriptControl-compatible `Sequenza` / `Stampa` surface.
 
@@ -18,6 +18,9 @@ The managed replacement exposes the visible workflow through **Sequence -> Seque
 - native output modes `SoloFronte`, `FronteRetro`, `SoloRetro`;
 - native `RetroaSpecchio` horizontal back-slot mirroring;
 - native signed `OffsetRetroX` / `OffsetRetroY` back-coordinate corrections;
+- native-style Pause/Resume during direct sequence printing;
+- native Stop semantics for Print All: finish the current logical sheet, then stop;
+- live sheet/side progress in the status bar during direct sequence printing;
 - optional managed crop marks, explicitly separate from legacy `Taglio`;
 - Page Setup using the real Windows printer/paper settings and synchronizing orientation back into Sequenza state;
 - Preview/Print current logical sheet and Preview/Print all logical sheets;
@@ -108,6 +111,22 @@ Y_back = Y_slot + OffsetRetroY
 
 The offsets accept signed values and are represented in managed code as millimetres. They affect only back output.
 
+## Pause, progress and Stop
+
+`Pausa` and `cmdStop` are controls on **Sequenza itself**, not on `frmPrinting`.
+
+`Pausa_Click` at `0x005D4EB0` toggles its Caption between `&Pausa` and `&Riprendi`. `StampaPagina_Click` contains explicit pause checkpoints beginning at `0x005D87F8` and `0x005D99A7`: while the caption is not `&Pausa`, the native code calls `DoEvents` and loops. The managed print service keeps the synchronous print model and reproduces that cooperative behavior by pumping WinForms messages at safe physical-page/side boundaries and continuing to pump while paused.
+
+`cmdStop_Click` at `0x005CFE60` performs the observable assignment:
+
+```text
+FinoAPagina.Text = Pagina.Text
+```
+
+`StampaTutte_Click` uses `FinoAPagina` as the page-loop upper bound. Stop therefore does **not** abort a card or one side in the middle. It lets the current logical page finish and prevents the next one. In `FronteRetro` mode this means the matching back phase is completed before the job ends. `SequencePrintJobController` models exactly that stop-after-current-sheet request and also reports current one-based sheet / total sheets / front-or-back phase to the managed status bar.
+
+The separate native `frmPrinting` form is a database-batch start/cancel/interval shell (`Inizia`/`Annulla`, `[Setup] Intervallo`); it has no `Pausa` or `cmdStop` controls. Its interval delay remains unimplemented because the delay path is guarded by an unidentified `frmCarta` boolean at vtable `+0x79C`. See `reverse-engineering/SEQUENCE_JOB_CONTROL_NATIVE.md`.
+
 ## Legacy sheet formats from `Campo.ini`
 
 Native `SubMain` builds the global configuration path as `App.Path + "\\Campo.ini"`. `Sequenza.Form_Load` clears `cboDimensioni`, loops keys **1 through 20** in `[Formati]`, adds every non-empty value, then selects list index 0.
@@ -157,7 +176,7 @@ They enumerate form controls and persist `Name` plus `Value`/`Text` under `[Sequ
 
 Numeric dimensions are written with the original Italian decimal comma and read using both Italian and invariant forms. OptionButton/checkbox values are emitted as numeric `1`/`0`; boolean text including Italian `Vero`/`Falso` is accepted when reading existing files. Existing `.Seq` files are updated conservatively and unknown keys, including transient `Fronte`/`Retro`, remain untouched.
 
-Managed `.sequence.json` is version 5. Version 4 already contains `cboDimensioni` and orientation and migrates the newly recovered Taglio/back controls to disabled/zero defaults. Earlier migrations retain the existing gap/orientation compatibility rules. The managed-only crop-mark setting remains sidecar-only.
+Managed `.sequence.json` is version 5. Version 4 already contains `cboDimensioni` and orientation and migrates the newly recovered Taglio/back controls to disabled/zero defaults. Earlier migrations retain the existing gap/orientation compatibility rules. The managed-only crop-mark setting remains sidecar-only. Pause/Stop/progress are transient print-job state and are not persisted.
 
 ## Recovered native callable contracts
 
@@ -179,6 +198,7 @@ Native `Funzioni.AddObjects` registers the same global `Sequenza` instance under
 ## Remaining parity work
 
 - determine whether and how legacy `cboDimensioni` influenced the physical printer driver's paper selection outside the recovered grid path;
-- compare hard margins, clipping, `RetroaSpecchio` and `OffsetRetro*` against real legacy printer/driver combinations;
-- recover device/card-printer progress, cancellation and hardware-specific duplex behavior beyond the generic Sequenza slot mirror;
+- compare hard margins, clipping, `RetroaSpecchio`, `OffsetRetro*` and cooperative Pause/Stop against real legacy printer/driver combinations;
+- recover the separate database-batch `frmPrinting` start/cancel/interval workflow after identifying the `frmCarta +0x79C` interval gate;
+- recover device/card-printer-specific status, cancellation and hardware duplex behavior beyond the generic Sequenza workflow;
 - keep expanding the script/device surface only where native behavior is proven.
