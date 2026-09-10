@@ -5,6 +5,7 @@ namespace UltraPrint.WinForms;
 /// <summary>
 /// Interactive managed replacement for the legacy Sequenza page/grid preview.
 /// Clicking a slot on the first logical sheet chooses where record 1 starts.
+/// PosizionaPagina marks the recovered record cell with the native red/bold cue.
 /// </summary>
 internal sealed class SequenceSheetPreviewControl : Control
 {
@@ -15,6 +16,7 @@ internal sealed class SequenceSheetPreviewControl : Control
     private double _pageHeightMm = 297;
     private int _recordCount;
     private int _sheetIndex;
+    private int? _highlightedRecordNumber;
 
     public SequenceSheetPreviewControl()
     {
@@ -60,6 +62,16 @@ internal sealed class SequenceSheetPreviewControl : Control
         set { _sheetIndex = Math.Max(0, value); Invalidate(); }
     }
 
+    public int? HighlightedRecordNumber
+    {
+        get => _highlightedRecordNumber;
+        set
+        {
+            _highlightedRecordNumber = value is > 0 ? value : null;
+            Invalidate();
+        }
+    }
+
     public event Action<int>? StartSlotSelected;
 
     protected override void OnPaint(PaintEventArgs e)
@@ -94,6 +106,8 @@ internal sealed class SequenceSheetPreviewControl : Control
         var pitchX = _settings.EffectiveHorizontalPitchMm(_layout.WidthMm);
         var pitchY = _settings.EffectiveVerticalPitchMm(_layout.HeightMm);
 
+        using var positionedBrush = new SolidBrush(Color.Red); // VB6 QBColor(12)
+        using var positionedFont = new Font(Font, FontStyle.Bold);
         for (var slot = 0; slot < _settings.Capacity; slot++)
         {
             var row = slot / _settings.Columns;
@@ -107,7 +121,10 @@ internal sealed class SequenceSheetPreviewControl : Control
 
             var isStart = _sheetIndex == 0 && slot == _settings.StartSlot;
             var occupied = placementBySlot.TryGetValue(slot, out var placement);
-            if (isStart)
+            var isPositioned = occupied && _highlightedRecordNumber == placement.RecordIndex + 1;
+            if (isPositioned)
+                e.Graphics.FillRectangle(positionedBrush, r);
+            else if (isStart)
                 e.Graphics.FillRectangle(SystemBrushes.Highlight, r);
             else if (occupied)
                 e.Graphics.FillRectangle(SystemBrushes.ControlLight, r);
@@ -116,11 +133,11 @@ internal sealed class SequenceSheetPreviewControl : Control
 
             e.Graphics.DrawRectangle(SystemPens.ControlDarkDark, r.X, r.Y, r.Width, r.Height);
             var label = occupied ? $"{slot + 1}\nR{placement.RecordIndex + 1}" : (slot + 1).ToString();
-            var textColor = isStart ? SystemColors.HighlightText : SystemColors.ControlText;
+            var textColor = isStart && !isPositioned ? SystemColors.HighlightText : SystemColors.ControlText;
             TextRenderer.DrawText(
                 e.Graphics,
                 label,
-                Font,
+                isPositioned ? positionedFont : Font,
                 Rectangle.Round(r),
                 textColor,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);

@@ -17,6 +17,12 @@ public sealed class SequencePrintSettings
     public LayoutSide Side { get; set; } = LayoutSide.Front;
     public bool DrawCutMarks { get; set; }
 
+    /// <summary>
+    /// Mirrors the native Sequenza.PaginaSingola checkbox. The recovered
+    /// PosizionaPagina method uses a different page-number formula when it is set.
+    /// </summary>
+    public bool SinglePageMode { get; set; }
+
     public int Capacity => checked(Rows * Columns);
 
     public double EffectiveHorizontalPitchMm(double cardWidthMm) =>
@@ -45,7 +51,8 @@ public sealed class SequencePrintSettings
         VerticalPitchMm = VerticalPitchMm,
         StartSlot = StartSlot,
         Side = Side,
-        DrawCutMarks = DrawCutMarks
+        DrawCutMarks = DrawCutMarks,
+        SinglePageMode = SinglePageMode
     };
 }
 
@@ -59,6 +66,42 @@ public readonly record struct SequenceSlotPlacement(
     double Ymm,
     double WidthMm,
     double HeightMm);
+
+/// <summary>
+/// Literal page-number rules recovered from Sequenza.cmdImposta_Click,
+/// PosizionaPagina and Pagina_Change. These intentionally preserve the native
+/// exact-capacity boundary quirk instead of silently correcting it.
+/// </summary>
+public static class LegacySequencePositioning
+{
+    public static int GetPageCount(int recordCount, int recordsPerPage)
+    {
+        if (recordsPerPage <= 0) throw new ArgumentOutOfRangeException(nameof(recordsPerPage));
+        if (recordCount <= 0) return 0;
+        return 1 + (recordCount - 1) / recordsPerPage;
+    }
+
+    public static int GetPageNumber(
+        int recordNumber,
+        int recordsPerPage,
+        int pageCount,
+        bool singlePageMode)
+    {
+        if (recordsPerPage <= 0) throw new ArgumentOutOfRangeException(nameof(recordsPerPage));
+        if (pageCount <= 0) return 1;
+
+        // Native PosizionaPagina literally performs:
+        //   Pagina = Fix(NumRecord / RecordxPagina) + 1
+        // or, with PaginaSingola checked:
+        //   Pagina = NumRecord Mod Pagine
+        // Pagina_Change then resets any value outside 1..Pagine to 1.
+        var rawPage = singlePageMode
+            ? recordNumber % pageCount
+            : checked((int)Math.Truncate(recordNumber / (double)recordsPerPage) + 1);
+
+        return rawPage < 1 || rawPage > pageCount ? 1 : rawPage;
+    }
+}
 
 /// <summary>
 /// Pure placement engine behind the managed Sequenza replacement. The first sheet

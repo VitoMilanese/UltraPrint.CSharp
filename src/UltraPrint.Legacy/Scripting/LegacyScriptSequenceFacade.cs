@@ -10,15 +10,16 @@ namespace UltraPrint.Legacy.Scripting;
 public interface ILegacyScriptSequenceHost
 {
     object PickRecord();
+    void PositionPage(object? recordNumber);
     void SaveSetup(string? fileName);
     void LoadSetup(string? fileName);
 }
 
 /// <summary>
 /// Script-visible Sequenza subset whose native parameter behavior and managed side effects are
-/// decoded. Pescarecord opens the record-search flow and returns the one-based absolute record
-/// position, or zero when cancelled/not found. ScriviSetup/LeggiSetup each take one Optional
-/// Variant filename; when omitted native code builds App.Path\\ly\\&lt;frmCarta.Caption&gt;.Seq.
+/// decoded. Pescarecord returns the one-based matched record; PosizionaPagina consumes that
+/// record number, applies the recovered legacy page arithmetic and highlights the matching grid
+/// cell. ScriviSetup/LeggiSetup each take one Optional Variant filename.
 /// </summary>
 [ComVisible(true)]
 [ClassInterface(ClassInterfaceType.AutoDispatch)]
@@ -32,6 +33,8 @@ public sealed class LegacyScriptSequenceFacade
     }
 
     public object Pescarecord() => _host.PickRecord();
+
+    public void PosizionaPagina(object NumRecord) => _host.PositionPage(NumRecord);
 
     public void ScriviSetup(object? Filename = null) =>
         _host.SaveSetup(NormalizeOptionalFileName(Filename));
@@ -50,17 +53,17 @@ public sealed class LegacyScriptSequenceFacade
 
 /// <summary>
 /// Native ABI/behavior facts recovered for the non-event Sequenza methods. Pescarecord has zero
-/// explicit arguments and returns a Variant: native code shows FormQBE, calls DAO FindFirst, and
-/// on success returns AbsolutePosition + 1. PosizionaPagina consumes one explicit Variant but its
-/// complete page/tab-numbering side effects are not yet safe to expose. ScriviSetup/LeggiSetup
-/// each consume one Optional Variant filename.
+/// explicit arguments and returns a Variant. PosizionaPagina consumes one explicit Variant
+/// NumRecord; cmdPosiziona_Click passes it the Pescarecord result. It updates Pagina, invokes
+/// cmdImposta_Click, scans MSFlexGrid1, and marks a matching record with QBColor(12) and bold.
+/// ScriviSetup/LeggiSetup each consume one Optional Variant filename.
 /// </summary>
 public static class LegacyScriptSequenceContract
 {
     public static IReadOnlyList<LegacyScriptSequenceMethodContract> Methods { get; } =
     [
         new("Pescarecord", 0x005C3590, 0, 0, LegacyScriptReturnKind.Variant, true),
-        new("PosizionaPagina", 0x005C5250, 1, 0, LegacyScriptReturnKind.None, false),
+        new("PosizionaPagina", 0x005C5250, 1, 0, LegacyScriptReturnKind.None, true),
         new("ScriviSetup", 0x005D5810, 1, 1, LegacyScriptReturnKind.None, true),
         new("LeggiSetup", 0x005D65B0, 1, 1, LegacyScriptReturnKind.None, true)
     ];

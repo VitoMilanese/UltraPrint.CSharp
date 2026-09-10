@@ -37,14 +37,20 @@ internal static class SequenceIntegration
             if (workspace is null || workspace.IsDisposed || !ReferenceEquals(workspaceLayout, layout))
             {
                 workspace?.Dispose();
-                workspace = new SequenceWorkspaceForm(layout);
+                var openedWorkspace = new SequenceWorkspaceForm(layout);
+                workspace = openedWorkspace;
                 workspaceLayout = layout;
-                workspace.FormClosed += (_, _) =>
+                scriptHost.AttachWorkspace(openedWorkspace, layout);
+                openedWorkspace.FormClosed += (_, _) =>
                 {
-                    workspace = null;
-                    workspaceLayout = null;
+                    scriptHost.DetachWorkspace(openedWorkspace);
+                    if (ReferenceEquals(workspace, openedWorkspace))
+                    {
+                        workspace = null;
+                        workspaceLayout = null;
+                    }
                 };
-                workspace.Show(form);
+                openedWorkspace.Show(form);
             }
             else
             {

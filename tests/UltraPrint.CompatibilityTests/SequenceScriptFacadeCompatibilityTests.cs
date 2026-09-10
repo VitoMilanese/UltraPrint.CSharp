@@ -49,6 +49,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
                 VerticalPitchMm = 56.75,
                 StartSlot = 2,
                 Side = LayoutSide.Back,
+                SinglePageMode = true,
                 DrawCutMarks = true
             };
             LegacySequenceIniStore.Save(path, layout, settings);
@@ -59,6 +60,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
             AssertEqual("8,25", ini.Get("Sequenza", "MargineAlto")!, "legacy .Seq Italian decimal margin");
             AssertEqual("87,5", ini.Get("Sequenza", "PassoOrizzontale")!, "legacy .Seq horizontal pitch");
             AssertEqual("56,75", ini.Get("Sequenza", "PassoVerticale")!, "legacy .Seq vertical pitch");
+            AssertEqual("1", ini.Get("Sequenza", "PaginaSingola")!, "legacy .Seq PaginaSingola");
             AssertEqual("KEEP", ini.Get("Sequenza", "CustomLegacyKey")!, "unknown legacy .Seq key preserved");
             AssertEqual("17,5", ini.Get("Sequenza", "MargineDestro")!, "unresolved right-margin key preserved");
 
@@ -80,6 +82,7 @@ internal static class SequenceScriptFacadeCompatibilityTests
             AssertNearly(8.25, loaded.MarginTopMm, 0.0001, "legacy .Seq loads MargineAlto");
             AssertNearly(87.5, loaded.HorizontalPitchMm, 0.0001, "legacy .Seq loads horizontal pitch");
             AssertNearly(56.75, loaded.VerticalPitchMm, 0.0001, "legacy .Seq loads vertical pitch");
+            AssertTrue(loaded.SinglePageMode, "legacy .Seq loads PaginaSingola");
             AssertNearly(33, loaded.MarginLeftMm, 0.0001, "unresolved MargineDestro does not corrupt managed left margin");
             AssertEqual(LayoutSide.Back, loaded.Side, "unresolved legacy side controls preserve managed baseline");
             AssertTrue(loaded.DrawCutMarks, "unresolved legacy Taglio preserves managed baseline");
@@ -112,6 +115,10 @@ internal static class SequenceScriptFacadeCompatibilityTests
 
         AssertEqual(7, Convert.ToInt32(facades.Sequence!.Pescarecord()), "Pescarecord forwards native one-based result");
         AssertEqual(1, sequenceHost.PickCalls, "Pescarecord forwards to live sequence host");
+
+        facades.Sequence.PosizionaPagina(10);
+        AssertEqual(1, sequenceHost.PositionCalls, "PosizionaPagina forwards to live sequence host");
+        AssertEqual(10, Convert.ToInt32(sequenceHost.LastPositionRecord), "PosizionaPagina forwards NumRecord Variant");
 
         facades.Sequence.ScriviSetup();
         AssertEqual(1, sequenceHost.SaveCalls, "ScriviSetup forwards to live sequence host");
@@ -153,8 +160,9 @@ internal static class SequenceScriptFacadeCompatibilityTests
         AssertTrue(pesca.ManagedBehaviorExposed, "Pescarecord exposed after FindFirst/AbsolutePosition recovery");
 
         var posiziona = LegacyScriptSequenceContract.Methods.Single(x => x.Name == "PosizionaPagina");
+        AssertEqual(0x005C5250, posiziona.NativeAddress, "PosizionaPagina native address");
         AssertEqual(1, posiziona.ExplicitArgumentCount, "PosizionaPagina one explicit Variant");
-        AssertTrue(!posiziona.ManagedBehaviorExposed, "PosizionaPagina page/tab numbering remains unexposed");
+        AssertTrue(posiziona.ManagedBehaviorExposed, "PosizionaPagina exposed after page/grid recovery");
 
         foreach (var name in new[] { "ScriviSetup", "LeggiSetup" })
         {
@@ -200,6 +208,8 @@ internal static class SequenceScriptFacadeCompatibilityTests
     {
         public int PickCalls { get; private set; }
         public int PickedRecord { get; init; }
+        public int PositionCalls { get; private set; }
+        public object? LastPositionRecord { get; private set; }
         public int SaveCalls { get; private set; }
         public int LoadCalls { get; private set; }
         public string? LastSavePath { get; private set; }
@@ -209,6 +219,12 @@ internal static class SequenceScriptFacadeCompatibilityTests
         {
             PickCalls++;
             return PickedRecord;
+        }
+
+        public void PositionPage(object? recordNumber)
+        {
+            PositionCalls++;
+            LastPositionRecord = recordNumber;
         }
 
         public void SaveSetup(string? fileName)

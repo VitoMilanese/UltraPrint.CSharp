@@ -23,7 +23,8 @@ public static class LegacySequenceIniStore
         "Colonne",
         "MargineAlto",
         "PassoOrizzontale",
-        "PassoVerticale"
+        "PassoVerticale",
+        "PaginaSingola"
     ];
 
     /// <summary>
@@ -60,10 +61,10 @@ public static class LegacySequenceIniStore
         result.MarginTopMm = ReadDouble(ini, "MargineAlto", result.MarginTopMm, 0, 1000);
         result.HorizontalPitchMm = ReadDouble(ini, "PassoOrizzontale", result.HorizontalPitchMm, 0, 1000);
         result.VerticalPitchMm = ReadDouble(ini, "PassoVerticale", result.VerticalPitchMm, 0, 1000);
+        result.SinglePageMode = ReadCheckValue(ini, "PaginaSingola", result.SinglePageMode);
 
-        // The native form has MargineDestro, Fronte/Retro, orientation, PaginaSingola,
-        // Taglio and other controls. Their exact relationship to the managed placement
-        // model is not yet sufficiently decoded, so the baseline values are retained.
+        // MargineDestro, Fronte/Retro, orientation, Taglio and other native controls still
+        // need geometry/printing proof before they can safely mutate the managed model.
         var capacity = Math.Max(1, result.Rows * result.Columns);
         if (result.StartSlot >= capacity) result.StartSlot = capacity - 1;
         result.Validate(layout.WidthMm, layout.HeightMm);
@@ -90,6 +91,7 @@ public static class LegacySequenceIniStore
         ini.Set(SectionName, "MargineAlto", FormatNumber(settings.MarginTopMm));
         ini.Set(SectionName, "PassoOrizzontale", FormatNumber(settings.HorizontalPitchMm));
         ini.Set(SectionName, "PassoVerticale", FormatNumber(settings.VerticalPitchMm));
+        ini.Set(SectionName, "PaginaSingola", settings.SinglePageMode ? "1" : "0");
         ini.Save(fullPath);
     }
 
@@ -100,6 +102,16 @@ public static class LegacySequenceIniStore
         if (!int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
             return fallback;
         return value < min || value > max ? fallback : value;
+    }
+
+    private static bool ReadCheckValue(LegacyIniDocument ini, string key, bool fallback)
+    {
+        var raw = ini.Get(SectionName, key);
+        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        raw = raw.Trim();
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+            return value != 0;
+        return bool.TryParse(raw, out var boolean) ? boolean : fallback;
     }
 
     private static double ReadDouble(

@@ -12,6 +12,7 @@ internal static class SequenceCompatibilityTests
         try
         {
             TestPlanner();
+            TestLegacyPositioning();
             TestStore(temp);
         }
         finally
@@ -53,6 +54,27 @@ internal static class SequenceCompatibilityTests
         AssertNearly(11, second[0].Ymm, 0.001, "sequence second sheet first Y");
     }
 
+    private static void TestLegacyPositioning()
+    {
+        AssertEqual(0, LegacySequencePositioning.GetPageCount(0, 10), "legacy zero records have zero pages");
+        AssertEqual(2, LegacySequencePositioning.GetPageCount(20, 10), "legacy Pagine is ceiling at exact capacity");
+        AssertEqual(3, LegacySequencePositioning.GetPageCount(21, 10), "legacy Pagine rounds a partial page up");
+
+        AssertEqual(1, LegacySequencePositioning.GetPageNumber(1, 10, 3, singlePageMode: false),
+            "legacy normal positioning starts on page one");
+        AssertEqual(2, LegacySequencePositioning.GetPageNumber(10, 10, 3, singlePageMode: false),
+            "legacy normal positioning preserves exact-capacity quotient boundary");
+        AssertEqual(3, LegacySequencePositioning.GetPageNumber(20, 10, 3, singlePageMode: false),
+            "legacy normal positioning preserves second exact-capacity boundary");
+        AssertEqual(1, LegacySequencePositioning.GetPageNumber(30, 10, 3, singlePageMode: false),
+            "Pagina_Change resets an out-of-range computed page to one");
+
+        AssertEqual(1, LegacySequencePositioning.GetPageNumber(3, 10, 3, singlePageMode: true),
+            "legacy single-page modulo zero is normalized to page one");
+        AssertEqual(2, LegacySequencePositioning.GetPageNumber(5, 10, 3, singlePageMode: true),
+            "legacy single-page mode uses NumRecord Mod Pagine");
+    }
+
     private static void TestStore(string temp)
     {
         var layout = new CardLayout
@@ -73,6 +95,7 @@ internal static class SequenceCompatibilityTests
             VerticalPitchMm = 57.25,
             StartSlot = 1,
             Side = LayoutSide.Back,
+            SinglePageMode = true,
             DrawCutMarks = true
         };
         ManagedSequenceStore.Save(layout, settings);
@@ -86,6 +109,7 @@ internal static class SequenceCompatibilityTests
         AssertNearly(57.25, loaded.VerticalPitchMm, 0.001, "sequence store vertical pitch");
         AssertEqual(1, loaded.StartSlot, "sequence store first slot");
         AssertEqual(LayoutSide.Back, loaded.Side, "sequence store side");
+        AssertTrue(loaded.SinglePageMode, "sequence store single-page mode");
         AssertTrue(loaded.DrawCutMarks, "sequence store cut marks");
         AssertTrue(File.Exists(layout.SourcePath + ".sequence.json"), "sequence setup uses non-destructive sidecar");
     }
