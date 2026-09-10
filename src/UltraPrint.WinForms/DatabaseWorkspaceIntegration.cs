@@ -1,4 +1,5 @@
 using UltraPrint.Core.Models;
+using UltraPrint.Legacy.Scripting;
 
 namespace UltraPrint.WinForms;
 
@@ -13,6 +14,15 @@ internal static class DatabaseWorkspaceIntegration
 
         DatabaseWorkspaceForm? workspace = null;
         CardLayout? workspaceLayout = null;
+        var scriptHost = new WinFormsLegacyDatabaseHost(form);
+        LegacyScriptDatabaseHostRegistry.Current = scriptHost;
+
+        form.FormClosed += (_, _) =>
+        {
+            LegacyScriptDatabaseHostRegistry.ClearIfCurrent(scriptHost);
+            scriptHost.Dispose();
+            workspace?.Dispose();
+        };
 
         var database = new ToolStripMenuItem("Database") { Name = "managedDatabaseMenu" };
         database.DropDownItems.Add(new ToolStripMenuItem("Database / Records...", null, (_, _) =>
