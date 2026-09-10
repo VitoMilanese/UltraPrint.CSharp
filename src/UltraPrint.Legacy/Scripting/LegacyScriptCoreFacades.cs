@@ -190,7 +190,8 @@ public sealed record LegacyScriptCoreFacadeSet(
     LegacyScriptCartaFacade? Carta = null,
     LegacyScriptMainFormFacade? Mainform = null,
     LegacyScriptDatabaseFacade? Database = null,
-    LegacyScriptTableFacade? Tabella = null);
+    LegacyScriptTableFacade? Tabella = null,
+    LegacyScriptSequenceFacade? Sequence = null);
 
 /// <summary>
 /// Registers only managed objects whose current member contracts are supported by
@@ -205,7 +206,8 @@ public static class LegacyScriptCoreFacadeRegistration
         string executableName = "UltraPrint",
         ILegacyScriptCartaHost? cartaHost = null,
         ILegacyScriptMainFormHost? mainFormHost = null,
-        ILegacyScriptDatabaseHost? databaseHost = null)
+        ILegacyScriptDatabaseHost? databaseHost = null,
+        ILegacyScriptSequenceHost? sequenceHost = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var variables = new LegacyScriptVariableTable();
@@ -219,15 +221,23 @@ public static class LegacyScriptCoreFacadeRegistration
         var effectiveDatabaseHost = databaseHost ?? LegacyScriptDatabaseHostRegistry.Current;
         var database = effectiveDatabaseHost is null ? null : new LegacyScriptDatabaseFacade(effectiveDatabaseHost);
         var tabella = effectiveDatabaseHost is null ? null : new LegacyScriptTableFacade(effectiveDatabaseHost);
+        var effectiveSequenceHost = sequenceHost ?? LegacyScriptSequenceHostRegistry.Current;
+        var sequence = effectiveSequenceHost is null ? null : new LegacyScriptSequenceFacade(effectiveSequenceHost);
         var effectiveCartaHost = cartaHost ?? LegacyScriptCartaHostRegistry.Current;
         var carta = effectiveCartaHost is null ? null : new LegacyScriptCartaFacade(effectiveCartaHost);
 
         // Preserve the relative native AddObjects order among every facade currently available:
-        // Me -> Mainform -> Db -> frmDatabase -> Carta -> Tabella -> Fn -> Funzioni -> File -> App.
-        // Missing Preview/Sequenza/Stampa/Chip/etc. are skipped rather than replaced by fake stubs.
+        // Me -> Mainform -> Db -> Sequenza -> Stampa -> frmDatabase -> Carta -> Tabella
+        // -> Fn -> Funzioni -> File -> App. Missing Preview/Chip/etc. are skipped rather than
+        // replaced by fake stubs. Native alias identity is preserved for every known alias pair.
         session.RegisterObject("Me", host, addMembers: true);
         if (mainform is not null) session.RegisterObject("Mainform", mainform, addMembers: true);
         if (database is not null) session.RegisterObject("Db", database, addMembers: true);
+        if (sequence is not null)
+        {
+            session.RegisterObject("Sequenza", sequence, addMembers: true);
+            session.RegisterObject("Stampa", sequence, addMembers: true);
+        }
         if (database is not null) session.RegisterObject("frmDatabase", database, addMembers: true);
         if (carta is not null) session.RegisterObject("Carta", carta, addMembers: true);
         if (tabella is not null) session.RegisterObject("Tabella", tabella, addMembers: true);
@@ -239,6 +249,15 @@ public static class LegacyScriptCoreFacadeRegistration
         session.RegisterObject("Funzioni", funzioni, addMembers: true);
         session.RegisterObject("File", file, addMembers: true);
         session.RegisterObject("App", app, addMembers: true);
-        return new LegacyScriptCoreFacadeSet(variables, funzioni, file, app, carta, mainform, database, tabella);
+        return new LegacyScriptCoreFacadeSet(
+            variables,
+            funzioni,
+            file,
+            app,
+            carta,
+            mainform,
+            database,
+            tabella,
+            sequence);
     }
 }

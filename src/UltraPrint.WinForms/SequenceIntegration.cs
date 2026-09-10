@@ -1,4 +1,5 @@
 using UltraPrint.Core.Models;
+using UltraPrint.Legacy.Scripting;
 
 namespace UltraPrint.WinForms;
 
@@ -13,6 +14,8 @@ internal static class SequenceIntegration
 
         SequenceWorkspaceForm? workspace = null;
         CardLayout? workspaceLayout = null;
+        var scriptHost = new WinFormsLegacySequenceHost(form);
+        LegacyScriptSequenceHostRegistry.Current = scriptHost;
 
         var sequence = new ToolStripMenuItem("Sequence") { Name = "managedSequenceMenu" };
         var open = new ToolStripMenuItem("Sequence / Sheet printing...")
@@ -58,7 +61,12 @@ internal static class SequenceIntegration
             .FirstOrDefault(x => string.Equals(x.item.Text, "Tools", StringComparison.OrdinalIgnoreCase))?.index ?? menu.Items.Count;
         menu.Items.Insert(toolsIndex, sequence);
 
-        form.FormClosed += (_, _) => workspace?.Dispose();
+        form.FormClosed += (_, _) =>
+        {
+            LegacyScriptSequenceHostRegistry.ClearIfCurrent(scriptHost);
+            scriptHost.Dispose();
+            workspace?.Dispose();
+        };
     }
 
     private static T? FindControl<T>(Control parent) where T : Control
