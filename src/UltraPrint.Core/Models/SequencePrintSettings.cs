@@ -45,6 +45,13 @@ public sealed class SequencePrintSettings
 
     public SequenceFillDirection FillDirection { get; set; } = SequenceFillDirection.Horizontal;
     public SequencePaperOrientation PaperOrientation { get; set; } = SequencePaperOrientation.Portrait;
+
+    /// <summary>
+    /// Raw Sequenza.cboDimensioni text. The native form populates this ComboBox from
+    /// Campo.ini [Formati]; the text itself is also persisted by generic .Seq setup.
+    /// </summary>
+    public string? PaperFormatText { get; set; }
+
     public int StartSlot { get; set; }
     public LayoutSide Side { get; set; } = LayoutSide.Front;
     public bool DrawCutMarks { get; set; }
@@ -87,6 +94,7 @@ public sealed class SequencePrintSettings
         VerticalPitchMm = VerticalPitchMm,
         FillDirection = FillDirection,
         PaperOrientation = PaperOrientation,
+        PaperFormatText = PaperFormatText,
         StartSlot = StartSlot,
         Side = Side,
         DrawCutMarks = DrawCutMarks,

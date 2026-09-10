@@ -1,6 +1,6 @@
 # Sequenza ScriptControl / legacy .Seq recovery note
 
-This compatibility slice is implemented in `LegacyScriptSequenceFacade`, `LegacyScriptSequenceHostRegistry`, `LegacySequenceIniStore`, `LegacyQbeMatcher`, `WinFormsLegacySequenceHost`, the managed `SequencePrintPlanner`, and the shared WinForms database host.
+This compatibility slice is implemented in `LegacyScriptSequenceFacade`, `LegacyScriptSequenceHostRegistry`, `LegacySequenceIniStore`, `LegacySequencePaperFormatStore`, `LegacyQbeMatcher`, `WinFormsLegacySequenceHost`, the managed `SequencePrintPlanner`, and the shared WinForms database host.
 
 Native facts used by the implementation:
 
@@ -54,11 +54,35 @@ This proves that `MargineDestro`, despite its label, behaves as a left-origin X 
 
 The `Orizzontale` and `Verticale` branches in `cmdImposta_Click` select traversal order rather than card rotation: `Orizzontale` is row-major and `Verticale` is column-major.
 
+## `Campo.ini [Formati]` and `cboDimensioni`
+
+Native `SubMain` constructs the configuration pathname at startup as `App.Path + "\\Campo.ini"`. `Sequenza.Form_Load` obtains `cboDimensioni` through getter `+0x418`, clears it, then iterates integer keys **1..20** from section `Formati` through the global `File` helper. Every non-empty returned string is added to the ComboBox; after the loop `ListIndex` is set to `0`.
+
+The supplied fixture confirms the deployed string grammar:
+
+```ini
+[Formati]
+1=A4 [21x29,7 cm]
+2=A3 [29,7x42 cm]
+3=Card [8,5x5,4 cm]
+```
+
+`cboDimensioni_Click` at `0x005C5A50` reads the selected ComboBox Text and extracts two values with the recovered `GetInside` pattern:
+
+- first token: delimiter `[` to delimiter `x`;
+- second token: delimiter `x` to the following space.
+
+Each Variant is converted to `Single` through VB runtime `__vbaR4ErrVar` and multiplied by `100`. With the supplied centimetre strings this produces the form/grid scale used to resize the sheet preview. `FoglioPortrait.Value` selects original width/height order; the Landscape branch swaps them. The routine then calls `cmdImposta_Click` to rebuild the imposition grid.
+
+This proves that `cboDimensioni` defines the **virtual Sequenza sheet/grid size**. It does **not** by itself prove any assignment to VB6 `Printer.PaperSize` or a Windows `PaperKind`; no such mapping is claimed until a direct native call path is found.
+
+Because native `ScriviSetup` / `LeggiSetup` generically persist ComboBox `Text`, `cboDimensioni` is also a proven `[Sequenza]` `.Seq` key. The managed model therefore stores its raw text and parses dimensions conservatively with the same delimiters while preserving non-empty unrecognized strings.
+
 ## Paper orientation and page origin
 
-`FoglioLandscape_Click` stores Variant value `1` in the form orientation state and calls `cboDimensioni_Click`; `FoglioPortrait_Click` stores `0` and follows the same rebuild path. `cboDimensioni_Click` tests `FoglioPortrait.Value`, parses the selected dimensions, and writes the MSFlexGrid extender `Width` / `Height`. Portrait uses the parsed width/height in their original order; Landscape swaps them. The routine then calls `cmdImposta_Click`.
+`FoglioLandscape_Click` stores Variant value `1` in the form orientation state and calls `cboDimensioni_Click`; `FoglioPortrait_Click` stores `0` and follows the same rebuild path. `cboDimensioni_Click` tests `FoglioPortrait.Value`. Portrait uses the parsed width/height in their original order; Landscape swaps them, then the routine calls `cmdImposta_Click`.
 
-This proves `FoglioPortrait` / `FoglioLandscape` are the **paper/grid orientation** pair and are independent of `Orizzontale` / `Verticale` record traversal. The exact `cboDimensioni` list/string-to-paper mapping is still a separate unresolved contract.
+This proves `FoglioPortrait` / `FoglioLandscape` are the **paper/grid orientation** pair and are independent of `Orizzontale` / `Verticale` record traversal.
 
 The recovered `SmartFormDll.Report.PrintPage` public parameter names are `Pic`, `nzoom`, `Lato`, `MargineDx`, and `MargineTop`, confirming that UltraPrint supplies its computed X/top offsets to the printer/picture drawing path rather than deriving a new margin from the printer driver.
 
@@ -72,6 +96,8 @@ The managed `Pescarecord` implementation reproduces the proven observable contra
 
 The managed `PosizionaPagina` implementation exposes the recovered script method, uses a pure `LegacySequencePositioning` helper for the literal native arithmetic/clamping, drives the currently open managed Sequence workspace, and mirrors the native MSFlexGrid match with a red/bold record highlight.
 
-`LegacySequenceIniStore` maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, `Orizzontale`, `Verticale`, `FoglioPortrait`, `FoglioLandscape`, and `PaginaSingola`. Unknown keys remain preserved. `Fronte`/`Retro`, `Taglio`, `cboDimensioni` paper selection and remaining device-specific setup stay unresolved until their exact output effects are proven.
+`LegacySequenceIniStore` maps the exact control names with proven direct equivalents: `Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `PassoOrizzontale`, `PassoVerticale`, `Orizzontale`, `Verticale`, `cboDimensioni`, `FoglioPortrait`, `FoglioLandscape`, and `PaginaSingola`. Unknown keys remain preserved. `Fronte`/`Retro`, `Taglio` and remaining device-specific setup stay unresolved until their exact output effects are proven.
 
-The managed planner uses `MargineDestro` as the X offset, treats `Passo*` as gaps, and supports both recovered fill orders. `SequencePrintService` applies recovered paper orientation to `PageSettings.Landscape` and translates the .NET printable-area origin back to the physical-page origin before rendering. Managed `.sequence.json` version 3 persists orientation; version 2 retains correct gap/fill semantics and migrates to Portrait, while version 1 full-pitch values are migrated to gaps by subtracting card width/height.
+`LegacySequencePaperFormatStore` reproduces Form_Load's 1..20 `[Formati]` lookup and the recovered bracket/x/space dimension grammar. The managed Sequence preview uses the resulting virtual sheet dimensions, while `SequencePrintService` continues to use actual driver `PageSettings` for Windows output because no direct native `cboDimensioni -> Printer.PaperSize` contract has yet been proved.
+
+The managed planner uses `MargineDestro` as the X offset, treats `Passo*` as gaps, and supports both recovered fill orders. `SequencePrintService` applies recovered paper orientation to `PageSettings.Landscape` and translates the .NET printable-area origin back to the physical-page origin before rendering. Managed `.sequence.json` version 4 persists raw `cboDimensioni` text; v3 retains orientation with native first-format fallback, v2 migrates to Portrait, and v1 additionally migrates full-pitch values to native gaps.

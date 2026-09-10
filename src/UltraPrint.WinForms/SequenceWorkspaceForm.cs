@@ -1,5 +1,6 @@
 using System.Data;
 using UltraPrint.Core.Models;
+using UltraPrint.Legacy.Configuration;
 using UltraPrint.Legacy.Data;
 
 namespace UltraPrint.WinForms;
@@ -21,6 +22,7 @@ internal sealed class SequenceWorkspaceForm : Form
     private readonly NumericUpDown _pitchX = Number(0, 1000, 0, 2);
     private readonly NumericUpDown _pitchY = Number(0, 1000, 0, 2);
     private readonly ComboBox _fillDirection = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+    private readonly ComboBox _paperFormat = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly ComboBox _paperOrientation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     private readonly NumericUpDown _startSlot = Number(1, 10000, 1, 0);
     private readonly NumericUpDown _copies = Number(1, 10000, 1, 0);
@@ -50,6 +52,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
         _fillDirection.Items.AddRange(new object[] { "Horizontal (row-major)", "Vertical (column-major)" });
         _paperOrientation.Items.AddRange(new object[] { "Portrait", "Landscape" });
+        LoadLegacyPaperFormats();
         _side.Items.AddRange(new object[] { "Front", "Back", "Front + Back" });
         Controls.Add(BuildUi());
         var statusStrip = new StatusStrip();
@@ -91,7 +94,7 @@ internal sealed class SequenceWorkspaceForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             ColumnCount = 2,
-            RowCount = 18,
+            RowCount = 19,
             Padding = new Padding(4)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
@@ -109,6 +112,7 @@ internal sealed class SequenceWorkspaceForm : Form
         AddSetting(panel, ref row, "Horizontal gap / Passo (mm):", _pitchX);
         AddSetting(panel, ref row, "Vertical gap / Passo (mm):", _pitchY);
         AddSetting(panel, ref row, "Fill direction:", _fillDirection);
+        AddSetting(panel, ref row, "Legacy sheet format:", _paperFormat);
         AddSetting(panel, ref row, "Paper orientation:", _paperOrientation);
         AddSetting(panel, ref row, "First slot:", _startSlot);
         AddSetting(panel, ref row, "Side:", _side);
@@ -187,6 +191,7 @@ internal sealed class SequenceWorkspaceForm : Form
         foreach (var numeric in new[] { _rows, _columns, _marginLeft, _marginTop, _pitchX, _pitchY, _startSlot })
             numeric.ValueChanged += (_, _) => SettingsChanged();
         _fillDirection.SelectedIndexChanged += (_, _) => SettingsChanged();
+        _paperFormat.SelectedIndexChanged += (_, _) => SettingsChanged();
         _paperOrientation.SelectedIndexChanged += (_, _) => SettingsChanged();
         _side.SelectedIndexChanged += (_, _) => SettingsChanged();
         _cutMarks.CheckedChanged += (_, _) => SettingsChanged();
@@ -205,6 +210,15 @@ internal sealed class SequenceWorkspaceForm : Form
         };
     }
 
+    private void LoadLegacyPaperFormats()
+    {
+        _paperFormat.Items.Clear();
+        var path = Path.Combine(AppContext.BaseDirectory, "Campo.ini");
+        foreach (var format in LegacySequencePaperFormatStore.Load(path))
+            _paperFormat.Items.Add(format.Text);
+        _paperFormat.Enabled = _paperFormat.Items.Count > 0 || !string.IsNullOrWhiteSpace(_settings.PaperFormatText);
+    }
+
     private void ApplySettingsToControls()
     {
         _syncingControls = true;
@@ -217,6 +231,7 @@ internal sealed class SequenceWorkspaceForm : Form
             _pitchX.Value = Clamp((decimal)_settings.HorizontalPitchMm, _pitchX);
             _pitchY.Value = Clamp((decimal)_settings.VerticalPitchMm, _pitchY);
             _fillDirection.SelectedIndex = _settings.FillDirection == SequenceFillDirection.Vertical ? 1 : 0;
+            ApplyPaperFormatToControl();
             _paperOrientation.SelectedIndex = _settings.PaperOrientation == SequencePaperOrientation.Landscape ? 1 : 0;
             UpdateStartSlotMaximum();
             _startSlot.Value = Clamp(_settings.StartSlot + 1, _startSlot);
@@ -236,6 +251,44 @@ internal sealed class SequenceWorkspaceForm : Form
         UpdatePreview();
     }
 
+    private void ApplyPaperFormatToControl()
+    {
+        var configured = _settings.PaperFormatText;
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            var index = FindPaperFormat(configured);
+            if (index < 0)
+            {
+                _paperFormat.Items.Add(configured);
+                index = _paperFormat.Items.Count - 1;
+            }
+            _paperFormat.Enabled = true;
+            _paperFormat.SelectedIndex = index;
+            return;
+        }
+
+        if (_paperFormat.Items.Count > 0)
+        {
+            // Native Sequenza.Form_Load sets cboDimensioni.ListIndex = 0 after
+            // loading non-empty Campo.ini [Formati] keys 1..20.
+            _paperFormat.SelectedIndex = 0;
+            _settings.PaperFormatText = _paperFormat.SelectedItem?.ToString();
+        }
+        else
+        {
+            _paperFormat.SelectedIndex = -1;
+            _paperFormat.Enabled = false;
+        }
+    }
+
+    private int FindPaperFormat(string text)
+    {
+        for (var i = 0; i < _paperFormat.Items.Count; i++)
+            if (string.Equals(_paperFormat.Items[i]?.ToString(), text, StringComparison.Ordinal))
+                return i;
+        return -1;
+    }
+
     private void SettingsChanged()
     {
         if (_syncingControls) return;
@@ -252,6 +305,9 @@ internal sealed class SequenceWorkspaceForm : Form
             _settings.FillDirection = _fillDirection.SelectedIndex == 1
                 ? SequenceFillDirection.Vertical
                 : SequenceFillDirection.Horizontal;
+            _settings.PaperFormatText = _paperFormat.SelectedIndex >= 0
+                ? _paperFormat.SelectedItem?.ToString()
+                : _settings.PaperFormatText;
             _settings.PaperOrientation = _paperOrientation.SelectedIndex == 1
                 ? SequencePaperOrientation.Landscape
                 : SequencePaperOrientation.Portrait;
@@ -338,7 +394,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void UpdatePreview()
     {
-        var (pageWidth, pageHeight) = _printService.GetPageSizeMm(_settings);
+        var (pageWidth, pageHeight) = GetPreviewPageSizeMm();
         _preview.Layout = _layout;
         _preview.Settings = _settings;
         _preview.PageWidthMm = pageWidth;
@@ -356,12 +412,26 @@ internal sealed class SequenceWorkspaceForm : Form
             var extent = SequencePrintPlanner.GetUsedExtent(_layout.WidthMm, _layout.HeightMm, _settings);
             var fits = extent.WidthMm <= pageWidth + 0.01 && extent.HeightMm <= pageHeight + 0.01;
             if (!fits)
-                _status.Text = $"Warning: sequence extent {extent.WidthMm:0.##} x {extent.HeightMm:0.##} mm exceeds paper {pageWidth:0.##} x {pageHeight:0.##} mm";
+                _status.Text = $"Warning: sequence extent {extent.WidthMm:0.##} x {extent.HeightMm:0.##} mm exceeds legacy sheet {pageWidth:0.##} x {pageHeight:0.##} mm";
         }
         catch (Exception ex)
         {
             _status.Text = ex.Message;
         }
+    }
+
+    private (double WidthMm, double HeightMm) GetPreviewPageSizeMm()
+    {
+        if (LegacySequencePaperFormatStore.TryGetOrientedSize(
+                _settings.PaperFormatText,
+                _settings.PaperOrientation,
+                out var widthMm,
+                out var heightMm))
+            return (widthMm, heightMm);
+
+        // A malformed/missing legacy format must not invent a PaperKind. Fall back
+        // to the selected printer page only for managed preview sizing.
+        return _printService.GetPageSizeMm(_settings);
     }
 
     private int SheetCount() => SequencePrintPlanner.GetSheetCount(_records.Count, _settings);

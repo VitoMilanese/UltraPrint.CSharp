@@ -9,4 +9,10 @@
     <ProjectReference Include="../UltraPrint.Core/UltraPrint.Core.csproj" />
     <ProjectReference Include="../UltraPrint.Legacy/UltraPrint.Legacy.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../samples/legacy/Campo.ini" Link="Campo.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

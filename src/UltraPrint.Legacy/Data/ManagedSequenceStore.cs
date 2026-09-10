@@ -10,7 +10,7 @@ namespace UltraPrint.Legacy.Data;
 /// </summary>
 public static class ManagedSequenceStore
 {
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
 
     public static string? GetPath(CardLayout layout) =>
         string.IsNullOrWhiteSpace(layout.SourcePath) ? null : layout.SourcePath + ".sequence.json";
@@ -30,11 +30,17 @@ public static class ManagedSequenceStore
             {
                 case CurrentVersion:
                     break;
+                case 3:
+                    // Version 3 already persisted native paper orientation. The
+                    // legacy cboDimensioni text was not managed yet; null means the
+                    // Sequence form will select the first Campo.ini [Formati] item.
+                    settings.PaperFormatText = null;
+                    break;
                 case 2:
                     // Version 2 already uses native Passo gap semantics. Paper
-                    // orientation was not persisted yet and therefore retains the
-                    // native/default portrait value after deserialization.
+                    // orientation and cboDimensioni were not persisted yet.
                     settings.PaperOrientation = SequencePaperOrientation.Portrait;
+                    settings.PaperFormatText = null;
                     break;
                 case 1:
                     // Version 1 treated HorizontalPitchMm/VerticalPitchMm as the full
@@ -52,6 +58,7 @@ public static class ManagedSequenceStore
                             : 0);
                     settings.FillDirection = SequenceFillDirection.Horizontal;
                     settings.PaperOrientation = SequencePaperOrientation.Portrait;
+                    settings.PaperFormatText = null;
                     break;
                 default:
                     return CreateDefault(layout);
@@ -88,6 +95,7 @@ public static class ManagedSequenceStore
         VerticalPitchMm = 0,
         FillDirection = SequenceFillDirection.Horizontal,
         PaperOrientation = SequencePaperOrientation.Portrait,
+        PaperFormatText = null,
         StartSlot = 0,
         Side = LayoutSide.Front,
         DrawCutMarks = false

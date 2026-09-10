@@ -10,6 +10,7 @@ The managed replacement exposes the visible workflow through **Sequence -> Seque
 - native-compatible X offset (`MargineDestro`) and top margin in millimetres;
 - native `PassoOrizzontale` / `PassoVerticale` inter-card gaps in millimetres;
 - Horizontal (`Orizzontale`, row-major) or Vertical (`Verticale`, column-major) record fill;
+- legacy virtual sheet formats loaded from `Campo.ini` `[Formati]` into `cboDimensioni`;
 - Portrait (`FoglioPortrait`) or Landscape (`FoglioLandscape`) paper orientation;
 - selectable first physical slot on the first sheet;
 - interactive sheet preview; clicking a first-sheet slot moves record 1 there;
@@ -46,6 +47,27 @@ The used sheet extent therefore includes all card widths/heights plus only `Colu
 
 The `Orizzontale` and `Verticale` controls do not rotate the card. Their branches change the MSFlexGrid record traversal: `Orizzontale` fills rows first (row-major), while `Verticale` fills columns first (column-major). The managed planner preserves the selected physical first slot in either traversal.
 
+## Legacy sheet formats from `Campo.ini`
+
+Native `SubMain` builds the global configuration path as `App.Path + "\\Campo.ini"`. `Sequenza.Form_Load` clears `cboDimensioni`, loops keys **1 through 20** in the `[Formati]` section, adds every non-empty value, and finally selects list index 0.
+
+The supplied UltraPrint `Campo.ini` contains:
+
+```ini
+[Formati]
+1=A4 [21x29,7 cm]
+2=A3 [29,7x42 cm]
+3=Card [8,5x5,4 cm]
+```
+
+`cboDimensioni_Click` parses the first number between `[` and `x`, parses the second between `x` and the following space, converts the centimetre values to the native grid scale, and resizes the sheet-preview MSFlexGrid. Portrait keeps the parsed width/height order; Landscape swaps them. The equivalent managed preview sizes are therefore 210 x 297 mm for A4, 297 x 420 mm for A3, and 85 x 54 mm for Card before orientation swapping.
+
+`LegacySequencePaperFormatStore` reproduces the proven lookup boundary and parsing grammar. Non-empty entries with an unrecognized dimension string remain visible as raw legacy text rather than being discarded. The managed Sequence form uses the parsed size for its virtual sheet preview and extent warning. If no usable format exists, it falls back to the selected Windows printer page size for managed preview only.
+
+This recovery **does not equate `cboDimensioni` with a Windows `PaperKind`**. Native evidence currently proves virtual sheet/grid sizing, not a direct `Printer.PaperSize` assignment. Page Setup and the actual printer driver remain separate until a direct native paper-device mapping is recovered.
+
+`cboDimensioni` is also a proven `.Seq` setup control: generic `ScriviSetup` / `LeggiSetup` persist ComboBox `Text`, so the managed legacy setup layer reads and writes the complete selected format string.
+
 ## Paper orientation and coordinate origin
 
 `FoglioPortrait` / `FoglioLandscape` are a second, independent OptionButton pair. Native `FoglioPortrait_Click` stores orientation state `0`, `FoglioLandscape_Click` stores `1`, and both route through `cboDimensioni_Click`. That routine swaps the selected sheet width/height before rebuilding the MSFlexGrid, proving these controls represent **paper orientation**, not record fill direction or card rotation.
@@ -56,7 +78,7 @@ The native `SmartFormDll.Report.PrintPage` callable accepts the printer/picture 
 
 This does not claim that every printer exposes identical hard-margin values to the 2003 driver stack. Exact device clipping remains a real-printer parity item, but the managed coordinate system now matches the native page-origin contract instead of silently adding the modern printer hard margin to every placement.
 
-Managed `.sequence.json` state is now version 3. Version 1 stored the full slot pitch in the properties named `HorizontalPitchMm` / `VerticalPitchMm`; v1 files are migrated by subtracting the card width/height so their physical placement remains unchanged under the recovered native gap semantics. Version 2 already has the correct gap/fill semantics and migrates to the previously implicit Portrait orientation. The property names are retained in JSON for compatibility, while the UI labels them as `Passo` gaps.
+Managed `.sequence.json` state is now version 4. Version 4 persists the raw `cboDimensioni` text. Version 3 already has paper orientation and migrates with no saved paper format, causing the Sequence form to use the native first-`[Formati]` fallback. Version 2 already has correct gap/fill semantics and migrates to Portrait; version 1 additionally migrates old full-pitch values to native `Passo` gaps by subtracting card width/height.
 
 ## Front/back behavior
 
@@ -111,13 +133,14 @@ They enumerate the form controls and persist `Name` plus `Value`/`Text` as INI v
 - `PassoVerticale` -> vertical inter-card gap;
 - `Orizzontale` -> row-major fill;
 - `Verticale` -> column-major fill;
+- `cboDimensioni` -> raw legacy `[Formati]` sheet-format text;
 - `FoglioPortrait` -> portrait paper orientation;
 - `FoglioLandscape` -> landscape paper orientation;
 - `PaginaSingola` -> recovered single-page positioning mode.
 
 Numeric dimensions are written with the original Italian-style decimal comma and read using both Italian and invariant numeric forms. OptionButton values are emitted as numeric `1`/`0`, which is locale-independent for the legacy VB6 setter. Boolean text, including Italian `Vero`/`Falso`, is accepted when reading existing files.
 
-Existing `.Seq` files are updated conservatively: unknown keys are preserved. `cboDimensioni` paper selection, `Fronte`/`Retro`, `Taglio`, and other device/print-specific controls remain unmapped until their exact output behavior is proven.
+Existing `.Seq` files are updated conservatively: unknown keys are preserved. `Fronte`/`Retro`, `Taglio`, and other device/print-specific controls remain unmapped until their exact output behavior is proven.
 
 ## ScriptControl identity
 
@@ -138,7 +161,7 @@ An application-lifetime WinForms sequence host follows the layout currently open
 
 ## Remaining parity work
 
-- recover the exact `cboDimensioni` paper-size list/string format and map it to Windows `PaperSize` without inventing unsupported legacy names;
+- determine whether and how the selected legacy `cboDimensioni` value is applied to the actual VB6 Printer/device paper size; do not infer `PaperKind` from display text;
 - compare hard-margin values and clipping against the actual legacy printer/driver combinations even though the page-origin coordinate contract is now matched;
 - recover exact front/back duplex mirroring/rotation and remaining `.Seq` controls such as `Fronte`, `Retro` and `Taglio`;
 - integrate device/card-printer progress/cancel behavior after the standard sheet workflow is stable.

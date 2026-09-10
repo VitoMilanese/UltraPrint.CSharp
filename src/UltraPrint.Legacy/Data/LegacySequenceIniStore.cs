@@ -26,6 +26,7 @@ public static class LegacySequenceIniStore
         "PassoVerticale",
         "Orizzontale",
         "Verticale",
+        "cboDimensioni",
         "FoglioPortrait",
         "FoglioLandscape",
         "PaginaSingola"
@@ -80,6 +81,12 @@ public static class LegacySequenceIniStore
         else if (vertical == true && horizontal != true)
             result.FillDirection = SequenceFillDirection.Vertical;
 
+        // cboDimensioni is a ComboBox. Native generic setup persists the control's
+        // Text, while Form_Load populates its available strings from Campo.ini [Formati].
+        var paperFormat = ini.Get(SectionName, "cboDimensioni");
+        if (!string.IsNullOrWhiteSpace(paperFormat))
+            result.PaperFormatText = paperFormat;
+
         var portrait = ReadOptionalCheckValue(ini, "FoglioPortrait");
         var landscape = ReadOptionalCheckValue(ini, "FoglioLandscape");
         if (portrait == true && landscape != true)
@@ -89,8 +96,8 @@ public static class LegacySequenceIniStore
 
         result.SinglePageMode = ReadCheckValue(ini, "PaginaSingola", result.SinglePageMode);
 
-        // Fronte/Retro, Taglio, cboDimensioni paper selection and other native
-        // controls still need printing/device proof before they mutate managed state.
+        // Fronte/Retro, Taglio and remaining device-specific controls stay
+        // untouched until their output behavior is proven.
         var capacity = Math.Max(1, result.Rows * result.Columns);
         if (result.StartSlot >= capacity) result.StartSlot = capacity - 1;
         result.Validate(layout.WidthMm, layout.HeightMm);
@@ -120,6 +127,8 @@ public static class LegacySequenceIniStore
         ini.Set(SectionName, "PassoVerticale", FormatNumber(settings.VerticalPitchMm));
         ini.Set(SectionName, "Orizzontale", settings.FillDirection == SequenceFillDirection.Horizontal ? "1" : "0");
         ini.Set(SectionName, "Verticale", settings.FillDirection == SequenceFillDirection.Vertical ? "1" : "0");
+        if (!string.IsNullOrWhiteSpace(settings.PaperFormatText))
+            ini.Set(SectionName, "cboDimensioni", settings.PaperFormatText);
         ini.Set(SectionName, "FoglioPortrait", settings.PaperOrientation == SequencePaperOrientation.Portrait ? "1" : "0");
         ini.Set(SectionName, "FoglioLandscape", settings.PaperOrientation == SequencePaperOrientation.Landscape ? "1" : "0");
         ini.Set(SectionName, "PaginaSingola", settings.SinglePageMode ? "1" : "0");
