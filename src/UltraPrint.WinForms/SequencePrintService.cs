@@ -77,7 +77,7 @@ public sealed class SequencePrintService
         SequencePrintSettings settings,
         int? singleSheetIndex)
     {
-        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex);
+        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex, jobController: null);
         using var dialog = new PrintPreviewDialog
         {
             Document = document,
@@ -94,8 +94,9 @@ public sealed class SequencePrintService
         CardLayout layout,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
-        SequencePrintSettings settings) =>
-        PrintCore(owner, layout, records, bindings, settings, singleSheetIndex: null);
+        SequencePrintSettings settings,
+        SequencePrintJobController? jobController = null) =>
+        PrintCore(owner, layout, records, bindings, settings, singleSheetIndex: null, jobController);
 
     public void PrintSheet(
         IWin32Window owner,
@@ -103,8 +104,9 @@ public sealed class SequencePrintService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
         SequencePrintSettings settings,
-        int sheetIndex) =>
-        PrintCore(owner, layout, records, bindings, settings, sheetIndex);
+        int sheetIndex,
+        SequencePrintJobController? jobController = null) =>
+        PrintCore(owner, layout, records, bindings, settings, sheetIndex, jobController);
 
     private void PrintCore(
         IWin32Window owner,
@@ -112,9 +114,10 @@ public sealed class SequencePrintService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
         SequencePrintSettings settings,
-        int? singleSheetIndex)
+        int? singleSheetIndex,
+        SequencePrintJobController? jobController)
     {
-        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex);
+        using var document = CreateDocument(layout, records, bindings, settings, singleSheetIndex, jobController);
         using var dialog = new PrintDialog
         {
             Document = document,
@@ -137,7 +140,8 @@ public sealed class SequencePrintService
         IReadOnlyList<IReadOnlyDictionary<string, object?>> records,
         IReadOnlyDictionary<int, string> bindings,
         SequencePrintSettings settings,
-        int? singleSheetIndex)
+        int? singleSheetIndex,
+        SequencePrintJobController? jobController)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(records);
@@ -171,6 +175,10 @@ public sealed class SequencePrintService
                 return;
             }
 
+            var side = sides[sideIndex];
+            jobController?.ReportProgress(sheetIndex + 1, totalSheetCount, side);
+            WaitWhilePaused(jobController);
+
             graphics.PageUnit = GraphicsUnit.Pixel;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
@@ -189,7 +197,6 @@ public sealed class SequencePrintService
                 layout.HeightMm,
                 settings,
                 sheetIndex);
-            var side = sides[sideIndex];
 
             foreach (var placement in placements)
             {
@@ -213,13 +220,24 @@ public sealed class SequencePrintService
                 if (settings.DrawCutMarks) DrawCutMarks(graphics, target);
             }
 
+            // Native Sequenza is cooperative: Pausa keeps pumping DoEvents, and
+            // cmdStop changes FinoAPagina so StampaTutte finishes the current
+            // logical page before terminating. Pump once after each physical side
+            // so a pending Pause/Stop click is observed at the same safe boundary.
+            PumpJobMessages(jobController);
+
+            var completedLogicalSheet = false;
             sideIndex++;
             if (sideIndex >= sides.Length)
             {
                 sideIndex = 0;
                 sheetIndex++;
+                completedLogicalSheet = true;
             }
-            e.HasMorePages = sheetIndex < lastSheetExclusive;
+
+            var stopAfterThisSheet = completedLogicalSheet &&
+                                     jobController?.StopAfterCurrentSheetRequested == true;
+            e.HasMorePages = !stopAfterThisSheet && sheetIndex < lastSheetExclusive;
         };
 
         document.EndPrint += (_, _) =>
@@ -228,6 +246,26 @@ public sealed class SequencePrintService
             sideIndex = 0;
         };
         return document;
+    }
+
+    private static void WaitWhilePaused(SequencePrintJobController? jobController)
+    {
+        if (jobController is null) return;
+
+        // A synchronous PrintDocument job runs on the UI thread. Pump once before
+        // checking the state so the Sequenza Pausa button can become effective at
+        // the page/side boundary, then mirror the native DoEvents pause loop.
+        Application.DoEvents();
+        while (jobController.IsPaused)
+        {
+            Application.DoEvents();
+            System.Threading.Thread.Sleep(15);
+        }
+    }
+
+    private static void PumpJobMessages(SequencePrintJobController? jobController)
+    {
+        if (jobController is not null) Application.DoEvents();
     }
 
     private PrintDocument CreateBaseDocument(string name, SequencePrintSettings settings)

@@ -13,6 +13,7 @@ internal sealed class SequenceWorkspaceForm : Form
 {
     private readonly CardLayout _layout;
     private readonly SequencePrintService _printService = new();
+    private readonly SequencePrintJobController _printJob = new();
     private readonly SequenceSheetPreviewControl _preview = new() { Dock = DockStyle.Fill };
     private readonly Dictionary<int, string> _bindings;
     private readonly NumericUpDown _rows = Number(1, 100, 5, 0);
@@ -36,11 +37,15 @@ internal sealed class SequenceWorkspaceForm : Form
     private readonly Label _dataStatus = new() { Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Label _pageLabel = new() { AutoSize = true, TextAlign = ContentAlignment.MiddleCenter };
     private readonly ToolStripStatusLabel _status = new("Ready");
+    private readonly Button _pause = new() { Text = "Pause", Width = 78, Height = 28, Margin = new Padding(3), Enabled = false };
+    private readonly Button _stop = new() { Text = "Stop", Width = 70, Height = 28, Margin = new Padding(3), Enabled = false };
 
     private SequencePrintSettings _settings;
     private List<IReadOnlyDictionary<string, object?>> _records = new();
     private int _sheetIndex;
     private bool _syncingControls;
+    private bool _printJobRunning;
+    private bool _stopAllowed;
 
     public SequenceWorkspaceForm(CardLayout layout)
     {
@@ -71,7 +76,16 @@ internal sealed class SequenceWorkspaceForm : Form
         ApplySettingsToControls();
         WireEvents();
         Shown += (_, _) => ReloadRecords();
-        FormClosing += (_, _) => TryPersistSettings(silent: true);
+        FormClosing += (_, e) =>
+        {
+            if (_printJobRunning)
+            {
+                e.Cancel = true;
+                _status.Text = "Printing is active. Use Stop to finish the current logical sheet first.";
+                return;
+            }
+            TryPersistSettings(silent: true);
+        };
     }
 
     private Control BuildUi()
@@ -190,11 +204,13 @@ internal sealed class SequenceWorkspaceForm : Form
         };
         bar.Controls.Add(Button("Load setup", (_, _) => LoadSetup(), 95));
         bar.Controls.Add(Button("Save setup", (_, _) => SaveSetup(), 95));
-        bar.Controls.Add(new Label { Width = 20 });
+        bar.Controls.Add(new Label { Width = 12 });
         bar.Controls.Add(Button("Preview sheet", (_, _) => PreviewCurrent(), 110));
         bar.Controls.Add(Button("Print sheet", (_, _) => PrintCurrent(), 100));
         bar.Controls.Add(Button("Preview all", (_, _) => PreviewAll(), 100));
         bar.Controls.Add(Button("Print all", (_, _) => PrintAll(), 90));
+        bar.Controls.Add(_pause);
+        bar.Controls.Add(_stop);
         bar.Controls.Add(Button("Close", (_, _) => Close(), 80));
         return bar;
     }
@@ -225,8 +241,19 @@ internal sealed class SequenceWorkspaceForm : Form
         };
         _preview.StartSlotSelected += slot =>
         {
+            if (_printJobRunning) return;
             _startSlot.Value = Math.Clamp(slot + 1, (int)_startSlot.Minimum, (int)_startSlot.Maximum);
         };
+        _pause.Click += (_, _) =>
+        {
+            if (_printJobRunning) _printJob.TogglePause();
+        };
+        _stop.Click += (_, _) =>
+        {
+            if (!_printJobRunning || !_stopAllowed) return;
+            _printJob.RequestStopAfterCurrentSheet();
+        };
+        _printJob.StateChanged += UpdatePrintJobUi;
     }
 
     private void LoadLegacyPaperFormats()
@@ -315,7 +342,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void SettingsChanged()
     {
-        if (_syncingControls) return;
+        if (_syncingControls || _printJobRunning) return;
         _syncingControls = true;
         try
         {
@@ -373,6 +400,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void ReloadRecords()
     {
+        if (_printJobRunning) return;
         _records = new List<IReadOnlyDictionary<string, object?>>();
         if (_useDatabase.Checked)
         {
@@ -475,6 +503,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void MoveSheet(int index)
     {
+        if (_printJobRunning) return;
         var count = SheetCount();
         if (count == 0) return;
         _sheetIndex = Math.Clamp(index, 0, count - 1);
@@ -483,12 +512,14 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void PageSetup()
     {
+        if (_printJobRunning) return;
         _printService.ShowPageSetup(this, _settings);
         ApplySettingsToControls();
     }
 
     private void LoadSetup()
     {
+        if (_printJobRunning) return;
         _settings = ManagedSequenceStore.Load(_layout);
         _sheetIndex = 0;
         ApplySettingsToControls();
@@ -497,6 +528,7 @@ internal sealed class SequenceWorkspaceForm : Form
 
     private void SaveSetup()
     {
+        if (_printJobRunning) return;
         if (TryPersistSettings(silent: false)) _status.Text = "Sequence setup saved";
     }
 
@@ -518,14 +550,18 @@ internal sealed class SequenceWorkspaceForm : Form
     private void PreviewCurrent() => RunPrint(() =>
         _printService.ShowPreviewSheet(this, _layout, RequireRecords(), _bindings, _settings, _sheetIndex));
 
-    private void PrintCurrent() => RunPrint(() =>
-        _printService.PrintSheet(this, _layout, RequireRecords(), _bindings, _settings, _sheetIndex));
+    private void PrintCurrent() => RunPrint(
+        () => _printService.PrintSheet(this, _layout, RequireRecords(), _bindings, _settings, _sheetIndex, _printJob),
+        enableJobControls: true,
+        allowStop: false);
 
     private void PreviewAll() => RunPrint(() =>
         _printService.ShowPreview(this, _layout, RequireRecords(), _bindings, _settings));
 
-    private void PrintAll() => RunPrint(() =>
-        _printService.Print(this, _layout, RequireRecords(), _bindings, _settings));
+    private void PrintAll() => RunPrint(
+        () => _printService.Print(this, _layout, RequireRecords(), _bindings, _settings, _printJob),
+        enableJobControls: true,
+        allowStop: true);
 
     private IReadOnlyList<IReadOnlyDictionary<string, object?>> RequireRecords()
     {
@@ -534,18 +570,68 @@ internal sealed class SequenceWorkspaceForm : Form
         return _records;
     }
 
-    private void RunPrint(Action action)
+    private void RunPrint(Action action, bool enableJobControls = false, bool allowStop = false)
     {
+        if (_printJobRunning) return;
         try
         {
             _settings.Validate(_layout.WidthMm, _layout.HeightMm);
             TryPersistSettings(silent: true);
+
+            if (enableJobControls)
+            {
+                _printJob.Reset();
+                _printJobRunning = true;
+                _stopAllowed = allowStop;
+                _pause.Enabled = true;
+                _stop.Enabled = allowStop;
+                UpdatePrintJobUi();
+            }
+
             action();
         }
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Sequence printing", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        finally
+        {
+            if (enableJobControls)
+            {
+                _printJobRunning = false;
+                _stopAllowed = false;
+                _pause.Text = "Pause";
+                _pause.Enabled = false;
+                _stop.Enabled = false;
+                _printJob.Reset();
+                _status.Text = "Ready";
+            }
+        }
+    }
+
+    private void UpdatePrintJobUi()
+    {
+        if (!_printJobRunning) return;
+
+        _pause.Text = _printJob.IsPaused ? "Resume" : "Pause";
+        _stop.Enabled = _stopAllowed && !_printJob.StopAfterCurrentSheetRequested;
+
+        var sheetText = _printJob.CurrentSheetNumber > 0
+            ? $"sheet {_printJob.CurrentSheetNumber} / {_printJob.TotalSheetCount}"
+            : "print job";
+        var sideText = _printJob.CurrentSide switch
+        {
+            LayoutSide.Front => "front",
+            LayoutSide.Back => "back",
+            _ => string.Empty
+        };
+
+        if (_printJob.IsPaused)
+            _status.Text = $"Paused — {sheetText}{(sideText.Length > 0 ? " — " + sideText : string.Empty)}";
+        else if (_printJob.StopAfterCurrentSheetRequested)
+            _status.Text = $"Stop requested — finishing {sheetText}";
+        else
+            _status.Text = $"Printing {sheetText}{(sideText.Length > 0 ? " — " + sideText : string.Empty)}";
     }
 
     private static void AddSetting(TableLayoutPanel panel, ref int row, string label, Control control)
