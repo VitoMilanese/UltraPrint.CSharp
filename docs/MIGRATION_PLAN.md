@@ -27,13 +27,14 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 - [x] image import into legacy `LY` layout directory conventions
 - [x] width/height/DPI layout properties
 - [x] standard Windows PrintDocument print, preview and page setup path
+- [x] create a new legacy-compatible `.ly` without an existing source layout
+- [x] edit text content directly on the parent PropertyGrid `Text` row while preserving nested settings
 - [~] appearance rendering (confirmed OLE colors implemented; remaining style flags still need byte mapping)
 - [ ] full text style persistence (bold/italic/strike/alignment/rotation/border/opaque flags)
 - [ ] table field record-byte mapping and full data rendering
 - [ ] barcode record/property mapping and actual barcode rendering
 - [ ] ruler/marker behavior parity with `frmCarta`
 - [ ] completely decoded side/front/back persistence independent of current filename heuristics
-- [ ] legacy New layout creation without requiring a source template
 
 ## Phase 3 — data, records and database design
 
@@ -46,6 +47,11 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 - [x] persist new managed DB/query/table/binding state without modifying unverified `.ly` bytes
 - [~] absorb `frmDatabase` core workflow (source/table/query/records/print implemented; schema designer and exact legacy persistence remain)
 - [~] absorb required `db.exe` functions (open/query/action implemented; create/import/export/schema utilities remain)
+- [x] bridge ScriptControl `Db`/`frmDatabase` identity to one managed database facade and recover `RiempiTabelle` + exact `NometipoCampo` DAO type mapping
+- [x] bridge ScriptControl `Tabella.Trovarecord` to the same layout database/query/table state
+- [x] make the script database host observe the exact selected row when the managed Database / Records workspace is open
+- [ ] decode `Tabella.Carica` source signature and semantics before exposing it
+- [ ] make script-driven record navigation update the visible managed record selection where required
 - [ ] confirm global `.ly` Database/Sql and per-field `Campo/DataField` offsets using a real legacy database-bound layout
 - [ ] implement record edit/write-back semantics
 - [ ] implement database creation and schema editor (`FrmDati`, `frmTabelle`)
@@ -54,7 +60,7 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 
 ## Phase 4 — scripting, counters and barcode
 
-- [~] recover script object model exposed by `Funzioni.AddObjects` / `AddProg`: all 20 native `AddObject` names are mapped; proven managed facades now exist for `Me`, `Carta`, shared `Fn`/`Funzioni`, `File` and `App`, while the remaining form/database/print/device objects still need script-callable member recovery
+- [~] recover script object model exposed by `Funzioni.AddObjects` / `AddProg`: all 20 native `AddObject` names are mapped; proven managed facades now exist for `Me`, `Mainform`, shared `Db`/`frmDatabase`, `Carta`, `Tabella`, shared `Fn`/`Funzioni`, `File` and `App`; remaining print/device objects still need script-callable member recovery
 - [x] recover confirmed preprocessing pipeline through `SostituisciRiga`, `PreparaCodice` and `Interpretariga`: `SOSTITUZ.TXT`, `@()`, `$()`, `?()`, `@GETFILE()`, `@DIRECTORY()` and `@COMPUTER()` semantics are implemented
 - [x] wire the recovered preprocessing into the actual WinForms script workspace, including the shared legacy variable table and prompt/file/folder/computer interaction adapter
 - [x] recover the native 1024-slot `GetVariabile` / `SetVariabile` / `IncVariabile` store and expose it through the same managed object registered as both `Fn` and `Funzioni`
@@ -65,8 +71,9 @@ The project target is **iso-functional replacement of UltraPrint 2.2.115**, not 
 - [x] recover the first core helper facades: `Me.Chiudimi`, shared `Fn`/`Funzioni.GetVariabile/SetVariabile/IncVariabile/Sostituisci`, `File.GetIni/WriteIni/SoloExt/SoloNomeFile/SoloPath/Esiste` and `App.Path/EXEName`
 - [~] recover `Carta` script facade: confirmed type switch and one-based field numbers are implemented; live editor injection plus `NuovoCampo`, `CampoToIni`, `IniToCampo`, `SetupCampo`, `DisegnaCampi`, `AggiornaMisure` and `AggiornaBottoni` are implemented; ambiguous `SelectField`, `LabelToCampo`, `SetButton`, `AggiornaMarcatori`, `FaiFoto` and `Record2Card` remain
 - [x] preserve recovered `NuovoCampo` type codes across managed `.ly` load/save: `2=Rettangolo`, `3=Testo`, `4=Barcode`, `5=Immagine`, `7=Twain`, `8=Telecamera`, `9=BandaMagnetica`, `10=SmartCara`, `13=Tabella`, plus fixture-proven image/photo type `6`
-- [ ] recover required `Mainform` script members
-- [ ] bridge `Db`/`frmDatabase` and `Tabella` while preserving alias/state identity
+- [~] recover required `Mainform` script members: live `StampaRecord`, `CaricaSfondo` and `Termina` are exposed; ABI-only members remain pending semantic decoding
+- [x] bridge `Db`/`frmDatabase` alias identity and first proven database methods
+- [~] bridge `Tabella`: `Trovarecord` and shared current-record observation are implemented; `Carica` and exact form-filter semantics remain
 - [ ] bridge `Sequenza`/`Stampa` as the same managed object
 - [ ] add the actually-used intrinsic/print/device facades (`Printer`, `Screen`, `ClipBoard`, `SmartDriver`, `Dispositivi`, `Chip`)
 - [ ] integrate trusted legacy script lifecycle execution with normal layout open/close once the required object facade surface is sufficient
