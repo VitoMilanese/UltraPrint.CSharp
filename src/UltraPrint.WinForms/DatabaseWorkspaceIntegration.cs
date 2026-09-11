@@ -43,6 +43,7 @@ internal static class DatabaseWorkspaceIntegration
                 HydrateNativeDataFields(layout);
                 var openedWorkspace = new DatabaseWorkspaceForm(layout);
                 AddBarcodeFieldsToBindingSelector(openedWorkspace, layout);
+                WireNativeBindingPersistence(openedWorkspace, canvas);
                 workspace = openedWorkspace;
                 workspaceLayout = layout;
                 scriptHost.AttachWorkspace(openedWorkspace, layout);
@@ -96,10 +97,8 @@ internal static class DatabaseWorkspaceIntegration
 
     private static void AddBarcodeFieldsToBindingSelector(DatabaseWorkspaceForm workspace, CardLayout layout)
     {
-        var cardFieldLabel = FindControl<Label>(workspace,
-            label => string.Equals(label.Text, "Card field:", StringComparison.OrdinalIgnoreCase));
-        if (cardFieldLabel?.Parent is not TableLayoutPanel bindingPanel) return;
-        if (bindingPanel.GetControlFromPosition(1, 0) is not ComboBox selector) return;
+        var bindingPanel = FindBindingPanel(workspace);
+        if (bindingPanel?.GetControlFromPosition(1, 0) is not ComboBox selector) return;
 
         var selectedIndex = (selector.SelectedItem as LayoutField)?.Index;
         var bindable = layout.Fields
@@ -123,6 +122,80 @@ internal static class DatabaseWorkspaceIntegration
             ? bindable.FirstOrDefault(field => field.Index == selectedIndex.Value)
             : null;
         selector.SelectedItem = selected ?? bindable[0];
+    }
+
+    private static void WireNativeBindingPersistence(DatabaseWorkspaceForm workspace, LayoutCanvas mainCanvas)
+    {
+        var bindingPanel = FindBindingPanel(workspace);
+        if (bindingPanel is null ||
+            bindingPanel.GetControlFromPosition(1, 0) is not ComboBox fieldSelector ||
+            bindingPanel.GetControlFromPosition(1, 1) is not ComboBox columnSelector ||
+            bindingPanel.GetControlFromPosition(1, 2) is not FlowLayoutPanel buttons)
+            return;
+
+        var bind = buttons.Controls.OfType<Button>()
+            .FirstOrDefault(button => string.Equals(button.Text, "Bind", StringComparison.OrdinalIgnoreCase));
+        var clear = buttons.Controls.OfType<Button>()
+            .FirstOrDefault(button => string.Equals(button.Text, "Clear override", StringComparison.OrdinalIgnoreCase));
+
+        if (bind is not null)
+        {
+            bind.Click += (_, _) =>
+            {
+                if (fieldSelector.SelectedItem is not LayoutField field ||
+                    columnSelector.SelectedItem is not string column)
+                    return;
+                TryWriteNativeBinding(workspace, mainCanvas, field, column);
+            };
+        }
+
+        if (clear is not null)
+        {
+            clear.Text = "Clear binding";
+            clear.Width = 100;
+            clear.Click += (_, _) =>
+            {
+                if (fieldSelector.SelectedItem is not LayoutField field) return;
+                TryWriteNativeBinding(workspace, mainCanvas, field, string.Empty);
+            };
+        }
+
+        if (bindingPanel.GetControlFromPosition(0, 4) is Label note)
+        {
+            note.Text =
+                "The native 28-byte DataField slot is recovered. Bind/Clear update the preserved .ly field record; " +
+                "save the layout in the main editor to persist it. The .data.json state remains as a compatibility " +
+                "copy for database/query/table state and unsaved managed sessions.";
+        }
+    }
+
+    private static void TryWriteNativeBinding(
+        DatabaseWorkspaceForm workspace,
+        LayoutCanvas mainCanvas,
+        LayoutField field,
+        string value)
+    {
+        try
+        {
+            LegacyNativeDataFieldWriter.Write(field, value);
+            mainCanvas.NotifyFieldEdited();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                workspace,
+                ex.Message,
+                "Native DataField update failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private static TableLayoutPanel? FindBindingPanel(DatabaseWorkspaceForm workspace)
+    {
+        var cardFieldLabel = FindControl<Label>(workspace,
+            label => string.Equals(label.Text, "Card field:", StringComparison.OrdinalIgnoreCase));
+        return cardFieldLabel?.Parent as TableLayoutPanel;
     }
 
     private static T? FindControl<T>(Control parent, Func<T, bool>? predicate = null) where T : Control
