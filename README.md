@@ -115,17 +115,25 @@ Implemented scripting compatibility foundation:
 
 This scripting layer remains intentionally partial. The main remaining compatibility gap is the callable member surface behind `Carta`, `Mainform`, database/table, sequence/print and device objects, plus production-safe automatic layout lifecycle integration and exact error-438 editor remapping. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md) and [`docs/SCRIPT_OBJECT_MODEL.md`](docs/SCRIPT_OBJECT_MODEL.md).
 
+Implemented counter compatibility workflow:
+
+- Recovered native `Contatori.dat` as 99 logical counter slots with 20-byte serialized records and a canonical compacting save of 100 records / 2000 bytes.
+- Preserves the still-unclaimed WORD and all existing one-byte name data without code-page guessing.
+- Recovered `+(CounterName)` as first exact matching counter, increment-before-replacement, optional `Funzioni.Zeri` formatting and immediate persistent save; smartDriver uses increment `1`.
+- Recovered `frmContatori` load/select/change/New/Delete/OK behavior, including first-match duplicate handling, `Capitalizzato`, fixed `String * 10` truncation, Delete/New slot-reuse quirks and deferred editor save.
+- **Tools -> Counters...** provides the managed editor using `App.Path\Contatori.dat`, with digits 1..20, current value, leading-zero flag, New/Delete and OK-save.
+
 Implemented device/card-printer compatibility foundation:
 
 - Recovered the exact 24-export x86 stdcall surface dynamically loaded from external `ICE_API.DLL`.
 - **Devices -> Printer / Device diagnostics...** restores the proven `Campo.ini` device/profile surface and explicitly reads ICE polling/model/serial/magnetic-head/active-job/error state when the compatible vendor runtime is available.
 - Recovered `PrintWithCardStatus`: `_GetCardId@8` followed by `_GetCardStatus@28` level 1 with a maximum of 60 immediate status calls.
-- Recovered the production `smartDriver.StampaRecord` orchestration envelope as non-executing compatibility semantics: Optional Variant Missing => False; interactive mode enable; Win32 `StartDocA`/`StartPage` plus script hooks; Optional=True pre-print magstripe preparation and card-side rotation; `_FeedCard(hDC, 0x11)`; `EncodeChip`; raw SmartCardContinue `1/0/1`; `HasRear` rear-side gate; and interactive-mode cleanup.
+- Recovered the production `smartDriver.StampaRecord` orchestration envelope as non-executing compatibility semantics: Optional Variant Missing => False; optional track preparation; interactive mode enable; Win32 `StartDocA`/`StartPage` plus script hooks; optional rotation; `_FeedCard(hDC, 0x11)` result gate; `EncodeChip`; exact raw SmartCardContinue result branches; optional prepared-track magstripe encode; Front side-processing followed by Rear only when `HasRear`; FeedCard-failure close path; and interactive-mode cleanup.
 - Recovered `MainForm.PrinterEscape` as GDI `PASSTHROUGH` escape 19 followed by `Printer.EndDoc`. Its first explicit argument is unused and its second is the payload. Native framing is now proven as `Chr(0) & Chr(Len(payload)) & payload & Chr(0)`, with `Len(payload)` passed as `cbInput` and `Null` as the fifth `Escape` argument; managed emission remains disabled pending ANSI/driver hardware validation.
 - No ICE card-job cancel export and no `AbortDoc` / `KillDoc` / `CancelDC` path is proven, so hardware-level cancellation is deliberately not invented. Existing managed batch/sequence cancellation stays cooperative.
 - All feed/rotate/magstripe/chip/cleaning/firmware printer mutations remain disabled until their remaining branch semantics and real hardware behavior are validated.
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex/chip-timing validation, full magstripe/smart-card execution, PrinterEscape ANSI/DBCS marshaling and hardware validation, active smartDriver mutation on supported hardware, remaining device-profile editing/module sequencing, and remaining options/job workflows.
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex/chip-timing validation, full magstripe/smart-card execution, PrinterEscape ANSI/DBCS marshaling and hardware validation, active smartDriver mutation on supported hardware, remaining device-profile editing/module sequencing, and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -143,7 +151,7 @@ Compatibility smoke tests:
 dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.CompatibilityTests.csproj -c Release
 ```
 
-## Try the editor, records, sequence, security and scripts
+## Try the editor, records, sequence, security, scripts and counters
 
 1. Build and run `UltraPrint.WinForms`.
 2. Use **File -> Open layout (.ly)...** and open `samples\legacy\TPMFAO19\TPMFAO19.ly` or a real layout from an original UltraPrint `LY` directory.
@@ -155,7 +163,8 @@ dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.Compatibilit
 8. Use **Sequence -> Sequence / Sheet printing...** to arrange records or template copies on sheets; choose legacy sheet format, Horizontal/Vertical fill, Taglio cut-and-stack mode, Portrait/Landscape orientation and front/back mirror/offset settings. During direct printing use **Pause/Resume**; **Stop** on Print all finishes the current logical sheet before ending the job.
 9. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
 10. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered; interactive legacy macros use the managed prompt/file/folder/computer dialogs.
-11. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
+11. Use **Tools -> Counters...** to edit the legacy `Contatori.dat` table. Changes remain in-memory until **OK**, matching native `frmContatori`; runtime `+(Counter)` increments persist immediately.
+12. Use **Save As** first with production legacy layouts while byte-level compatibility recovery is still in progress.
 
 ## CLI
 
@@ -170,4 +179,4 @@ dotnet run --project tools/UltraPrint.RecoveryCli -- startup-plan "C:\Program Fi
 
 Only behavior proven from binary metadata/native flow or real legacy data is treated as a confirmed compatibility contract. Unknown `.ly` bytes remain preserved rather than guessed. A workflow is marked complete only when it actually works against legacy inputs; placeholder menu items do not count.
 
-See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md`, `docs/SEQUENCE_COMPATIBILITY.md`, `reverse-engineering/BATCH_PRINTING_NATIVE.md` and `reverse-engineering/SMARTDRIVER_ICE_API_NATIVE.md` for the recovered structures and confidence level.
+See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md`, `docs/SEQUENCE_COMPATIBILITY.md`, `reverse-engineering/BATCH_PRINTING_NATIVE.md`, `reverse-engineering/COUNTERS_NATIVE.md`, `reverse-engineering/COUNTER_EDITOR_NATIVE.md` and `reverse-engineering/SMARTDRIVER_ICE_API_NATIVE.md` for the recovered structures and confidence level.
