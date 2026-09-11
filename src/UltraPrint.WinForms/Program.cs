@@ -17,6 +17,7 @@ internal static class Program
         ScriptIntegration.Attach(mainForm);
         CounterIntegration.Attach(mainForm);
         BarcodeIntegration.Attach(mainForm);
+        MagneticStripeIntegration.Attach(mainForm);
         Application.Run(mainForm);
     }
 }

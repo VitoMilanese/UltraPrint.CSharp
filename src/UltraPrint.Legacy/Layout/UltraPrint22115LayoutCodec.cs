@@ -21,6 +21,16 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
     public const int KnownLayoutFileSize = 20_148;
     public const double TwipsPerMillimeter = 1440.0 / 25.4;
 
+    // Native sequential layout serialization writes two 16-bit values after the 64 field records,
+    // then four fixed String * 256 values. The first three are Traccia1/2/3; the fourth remains
+    // intentionally unknown here (TPMFAO19 contains ".\\Foto" in that slot).
+    public const int KnownLayoutTailOffset = KnownFieldTableOffset + FieldRecordSize * MaxFieldSlots; // 18925 / 0x49ED
+    public const int MagneticTrackStringLength = 256;
+    public const int KnownMagneticTrack1Offset = KnownLayoutTailOffset + 4; // 18929 / 0x49F1
+    public const int KnownMagneticTrack2Offset = KnownMagneticTrack1Offset + MagneticTrackStringLength; // 19185 / 0x4AF1
+    public const int KnownMagneticTrack3Offset = KnownMagneticTrack2Offset + MagneticTrackStringLength; // 19441 / 0x4BF1
+    public const int KnownUnknownGlobalStringOffset = KnownMagneticTrack3Offset + MagneticTrackStringLength; // 19697 / 0x4CF1
+
     private const string TemplateResourceFileName = "UltraPrint22115Template.ly";
     private static readonly Encoding LegacyEncoding = Encoding.Latin1;
 
@@ -83,6 +93,7 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
             layout.Fields.Add(field);
         }
 
+        DecodeMagneticTracks(data, layout);
         return layout;
     }
 
@@ -130,6 +141,8 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
             PatchField(target, field);
             field.LegacyRecordTemplate = target.ToArray();
         }
+
+        PatchMagneticTracks(data, layout);
 
         var fullTarget = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullTarget)!);
@@ -299,6 +312,44 @@ public sealed class UltraPrint22115LayoutCodec : ILegacyLayoutCodec
         WriteSingle(record, 220, checked((float)field.Text.FontSize));
         BinaryPrimitives.WriteInt16LittleEndian(record.Slice(224, 2), field.Text.Fixed ? (short)-1 : (short)0);
         BinaryPrimitives.WriteInt16LittleEndian(record.Slice(262, 2), checked((short)field.Level));
+    }
+
+    private static void DecodeMagneticTracks(ReadOnlySpan<byte> data, CardLayout layout)
+    {
+        if (data.Length < KnownMagneticTrack3Offset + MagneticTrackStringLength) return;
+
+        layout.MagneticStripe.Track1 = ReadFixedString(data.Slice(KnownMagneticTrack1Offset, MagneticTrackStringLength));
+        layout.MagneticStripe.Track2 = ReadFixedString(data.Slice(KnownMagneticTrack2Offset, MagneticTrackStringLength));
+        layout.MagneticStripe.Track3 = ReadFixedString(data.Slice(KnownMagneticTrack3Offset, MagneticTrackStringLength));
+    }
+
+    private static void PatchMagneticTracks(Span<byte> data, CardLayout layout)
+    {
+        if (data.Length < KnownMagneticTrack3Offset + MagneticTrackStringLength)
+            throw new InvalidDataException("The .ly file is too short to contain the recovered magnetic-track tail slots.");
+
+        PatchFixedGlobalString(data.Slice(KnownMagneticTrack1Offset, MagneticTrackStringLength), layout.MagneticStripe.Track1, "Track 1");
+        PatchFixedGlobalString(data.Slice(KnownMagneticTrack2Offset, MagneticTrackStringLength), layout.MagneticStripe.Track2, "Track 2");
+        PatchFixedGlobalString(data.Slice(KnownMagneticTrack3Offset, MagneticTrackStringLength), layout.MagneticStripe.Track3, "Track 3");
+    }
+
+    private static void PatchFixedGlobalString(Span<byte> destination, string? requestedValue, string label)
+    {
+        var value = requestedValue ?? string.Empty;
+        if (string.Equals(ReadFixedString(destination), value, StringComparison.Ordinal)) return;
+
+        if (value.Any(ch => ch > byte.MaxValue))
+            throw new InvalidDataException($"{label} contains characters outside the recovered byte-preservable ANSI boundary.");
+
+        var bytes = LegacyEncoding.GetBytes(value);
+        if (bytes.Length > destination.Length)
+            throw new InvalidDataException($"{label} cannot exceed {destination.Length} bytes in UltraPrint 2.2.115.");
+
+        // VB6 fixed-length String assignment pads the remaining bytes with spaces. Crucially this
+        // runs only when the decoded value changed, so untouched legacy zero-filled slots remain
+        // byte-identical on a normal load/save round-trip.
+        destination.Fill(0x20);
+        bytes.CopyTo(destination);
     }
 
     private static int FindFieldTableOffset(ReadOnlySpan<byte> data)
