@@ -21,9 +21,9 @@ public readonly record struct LegacyMagstripePreparationPipelineStage(
 
 /// <summary>
 /// Pure structural contract for the transformation performed by native helper 0x00603FC0
-/// before it writes each prepared Traccia1/2/3 value into frmCarta. The +(...) stage is now
-/// identified as persistent frmContatori counter expansion; the deeper [...] semantics remain
-/// deliberately unclaimed. No legacy macro or hardware code executes here.
+/// before it writes each prepared Traccia1/2/3 value into frmCarta. The +(...) stage is
+/// persistent frmContatori counter expansion; the [...] stage is record-field expansion
+/// backed by the active frmDatabase/Tabella data control. No legacy or hardware code runs here.
 /// </summary>
 public static class LegacySmartDriverMagstripeTransformPipelineSemantics
 {
@@ -42,11 +42,13 @@ public static class LegacySmartDriverMagstripeTransformPipelineSemantics
     public const int BracketExpansionHelperNativeAddress = 0x606910;
     public const string BracketOpeningDelimiter = "[";
     public const string BracketClosingDelimiter = "]";
+    public const string BracketArgumentSeparator = ",";
+    public const int BracketMaximumParsedArguments = 3;
 
     /// <summary>
-    /// The private +(...) helper receives the same raw mode value propagated into 0x00603FC0
-    /// by smartDriver.StampaRecord. Native counter recovery proves this value is the amount
-    /// added to the matched counter; smartDriver therefore increments matching counters by 1.
+    /// The +(...) helper receives the same raw mode value propagated into 0x00603FC0 by
+    /// smartDriver.StampaRecord. Counter recovery proves this value is the amount added to
+    /// the matched counter; smartDriver therefore increments matching counters by 1.
     /// </summary>
     public const int SmartDriverExpansionRawMode = 1;
 
@@ -79,16 +81,17 @@ public static class LegacySmartDriverMagstripeTransformPipelineSemantics
 
     /// <summary>
     /// 0x006079D0 repeatedly extracts +(...) bodies through Funzioni.GetInside and replaces
-    /// complete occurrences through Funzioni.Sostituisci. Helper 0x005F5A90 is now proven to
-    /// resolve the matching frmContatori record, update/persist it, and return its formatted value.
+    /// complete occurrences through Funzioni.Sostituisci. Helper 0x005F5A90 resolves the
+    /// matching frmContatori record, updates/persists it, and returns its formatted value.
     /// </summary>
     public const int PlusParenthesisReplacementResolverNativeAddress = 0x5F5A90;
     public const bool PlusParenthesisTokensArePersistentCounters = true;
     public const string CounterPersistenceFileName = "Contatori.dat";
 
     /// <summary>
-    /// 0x00606910 begins by extracting [...] bodies through the same GetInside contract.
-    /// Its deeper replacement meaning is deliberately left unresolved.
+    /// 0x00606910 expands [...] through the active frmDatabase/Tabella Recordset.Fields path.
+    /// Its body supports field, field/start and field/start/length forms separated by commas.
     /// </summary>
+    public const bool BracketTokensAreRecordFields = true;
     public const bool BracketStageUsesGetInside = true;
 }

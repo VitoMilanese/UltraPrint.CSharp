@@ -1,6 +1,6 @@
 # smartDriver magnetic-track transform pipeline recovery
 
-This note extends the recovered `0x00603FC0` contract from `SMARTDRIVER_MAGSTRIPE_PREPARATION_NATIVE.md`. It records the structural order used to transform each global `Traccia1/2/3` value before assignment to the corresponding `frmCarta` track property. The `+(...)` stage is now identified as persistent `frmContatori` counter expansion; the deeper `[...]` replacement semantics remain deliberately unclaimed.
+This note extends the recovered `0x00603FC0` contract from `SMARTDRIVER_MAGSTRIPE_PREPARATION_NATIVE.md`. It records the structural order used to transform each global `Traccia1/2/3` value before assignment to the corresponding `frmCarta` track property. Both token-expansion stages are now identified: `+(...)` is persistent `frmContatori` counter expansion and `[...]` is active-record field expansion.
 
 ## Per-track pipeline
 
@@ -12,7 +12,7 @@ raw TracciaN
  -> Funzioni.Interpretariga(..., True)
  -> remove Chr$(0)
  -> persistent counter expansion +(CounterName) via 0x006079D0
- -> private [...] expansion helper 0x00606910
+ -> active record-field expansion [...] via 0x00606910
  -> frmCarta track setter
 ```
 
@@ -28,7 +28,7 @@ After all three assignments, `0x00603FC0` rereads the getters and returns the su
 
 ## Trim and Interpretariga
 
-For every source global the helper first copies the BSTR into a by-reference Variant and calls the imported MSVBVM60 runtime ordinal **520**, `rtcTrimVar`, i.e. VB `Trim()`.
+For every source global the helper first copies the BSTR into a by-reference Variant and calls imported MSVBVM60 ordinal **520**, `rtcTrimVar`, i.e. VB `Trim()`.
 
 The trimmed Variant is then passed to the shared `Funzioni` singleton through vtable offset `+0x840`, recovered independently as `Funzioni.Interpretariga`. The second explicit argument is a Variant Boolean containing `0xFFFF`, VB `True`.
 
@@ -56,7 +56,7 @@ Thus embedded NUL characters are removed before either token-expansion helper ru
 
 The first private stage receives the current track plus the same raw mode propagated into `0x00603FC0`; the production smartDriver call sites use raw value `1`.
 
-`0x006079D0` calls `Funzioni.GetInside` (`+0x7CC`) with literal delimiters `"+("` and `")"`. A non-empty body is passed with the raw mode to `0x005F5A90`, now proven to be the resolver for the persistent table edited by `frmContatori`.
+`0x006079D0` calls `Funzioni.GetInside` (`+0x7CC`) with literal delimiters `"+("` and `")"`. A non-empty body is passed with the raw mode to `0x005F5A90`, proven to be the resolver for the persistent table edited by `frmContatori`.
 
 For smartDriver, resolver mode `1` increments the matching counter by one **before** formatting and substitution, immediately persists the updated table to `App.Path\Contatori.dat`, and returns the updated value. The complete token is then replaced through `Funzioni.Sostituisci`.
 
@@ -64,16 +64,36 @@ For smartDriver, resolver mode `1` increments the matching counter by one **befo
 
 The full counter record, `Funzioni.Zeri`, persistence, defaults, and replace-all behavior are documented in [`COUNTERS_NATIVE.md`](COUNTERS_NATIVE.md).
 
-## `[...]` expansion stage — `0x00606910`
+## `[...]` active record-field stage — `0x00606910`
 
-The output of counter expansion is then passed to private helper `0x00606910`.
+The output of counter expansion is passed to `0x00606910`. It repeatedly uses `Funzioni.GetInside` (`+0x7CC`) with `"["` / `"]"`.
 
-Its opening structure again calls `Funzioni.GetInside` (`+0x7CC`), this time with literal delimiters `"["` and `"]"`, and tests the extracted Variant against an empty string before entering its deeper branch logic.
+The helper chooses its legacy record source from form-loaded WORD flags:
 
-This proves that bracketed constructs are processed after persistent counters. The full resolver/replacement semantics inside `0x00606910` remain more complex and are intentionally left unresolved in this slice.
+- `frmDatabase` loaded (`0x0062A04C`) -> its `Data1` data control;
+- `Tabella` loaded (`0x0062A04A`) -> its `datPrimaryRS` data control, overriding `frmDatabase` if both are active;
+- neither loaded -> return the input unchanged without replacing brackets.
+
+A bracket body without commas is a field token. If a comma is present, `Funzioni.Parola` (`+0x7F0`) reads at most three comma-separated arguments, while the second and third are converted through VB `Val()`:
+
+```text
+[field]
+[field,start]
+[field,start,length]
+```
+
+The first token is wrapped back as `"[" & field & "]"` and looked up through the selected data control's late-bound `.Recordset.Fields(...).Name` path. Lookup failure yields empty replacement. Existing fields are read again; `IsNull()` also maps Null values to empty replacement.
+
+When `start > 0`, VB `Mid()` is applied using one-based character positions. Positive `length` selects `Mid(value,start,length)`; absent/non-positive length selects `Mid(value,start)`. Finally `Funzioni.Sostituisci` replaces the **complete original token** (`[raw body]`) everywhere in the current string, and the outer helper repeats for the next bracket token.
+
+The full source-selection, field-lookup, error/null, substring and replace-all contract is documented in [`BRACKET_RECORD_FIELDS_NATIVE.md`](BRACKET_RECORD_FIELDS_NATIVE.md).
 
 ## Managed boundary
 
-`LegacySmartDriverMagstripeTransformPipelineSemantics` records the proven structural facts and marks `+(...)` as persistent counters. `LegacyCounterTokenSemantics` separately records the recovered counter resolver/formatting/persistence effects as pure state.
+The managed compatibility layer splits the recovered behavior into pure contracts:
 
-No actual counter file write, token resolver loop, script engine, COM facade, ICE API, GDI call, printer operation, or card mutation is executed by these compatibility models. The remaining deep transform gap in this pipeline is the semantic meaning of `[...]` processing.
+- `LegacySmartDriverMagstripeTransformPipelineSemantics` records the overall stage order;
+- `LegacyCounterTokenSemantics` records persistent `+(...)` counter effects without file I/O;
+- `LegacyBracketRecordFieldSemantics` records `[...]` source/field/slicing behavior without COM/database I/O.
+
+No actual counter-file write, legacy data-control access, script engine, COM facade, ICE API, GDI call, printer operation, or card mutation is executed by these compatibility models. Remaining work is implementation/integration against managed data/counter stores while preserving the recovered native contracts.

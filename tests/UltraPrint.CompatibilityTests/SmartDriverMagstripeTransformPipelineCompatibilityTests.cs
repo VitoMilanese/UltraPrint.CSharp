@@ -34,7 +34,7 @@ internal static class SmartDriverMagstripeTransformPipelineCompatibilityTests
         AssertEqual(0x606910,
             stages.Single(x => x.Kind == LegacyMagstripePreparationPipelineStageKind.ExpandBracketedTokens)
                 .NativeAddress!.Value,
-            "[...] private expansion helper address");
+            "[...] record-field expansion helper address");
     }
 
     private static void TestRecoveredRuntimeAndFunctionContracts()
@@ -77,6 +77,12 @@ internal static class SmartDriverMagstripeTransformPipelineCompatibilityTests
             "[...] opening delimiter");
         AssertEqual("]", LegacySmartDriverMagstripeTransformPipelineSemantics.BracketClosingDelimiter,
             "[...] closing delimiter");
+        AssertEqual(",", LegacySmartDriverMagstripeTransformPipelineSemantics.BracketArgumentSeparator,
+            "[...] argument separator");
+        AssertEqual(3, LegacySmartDriverMagstripeTransformPipelineSemantics.BracketMaximumParsedArguments,
+            "[...] maximum parsed arguments");
+        AssertTrue(LegacySmartDriverMagstripeTransformPipelineSemantics.BracketTokensAreRecordFields,
+            "[...] tokens are backed by active recordset fields");
         AssertTrue(LegacySmartDriverMagstripeTransformPipelineSemantics.BracketStageUsesGetInside,
             "[...] stage uses Funzioni.GetInside");
     }
