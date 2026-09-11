@@ -2,8 +2,6 @@
 
 UltraPrint 2.2.115 uses the `+(...)` stage in magnetic-track preparation as a persistent counter expansion. The resolver is native helper `0x005F5A90`; its table is the same data edited by `frmContatori`, and matched updates are saved immediately to `App.Path\Contatori.dat`.
 
-This note records the proven binary contract without enabling automatic writes to a user's legacy counter file.
-
 ## `frmContatori` ownership
 
 VB6 metadata identifies the UI object `frmContatori`. Its recovered controls/events include:
@@ -26,23 +24,59 @@ App.Path\Contatori.dat
 
 The first loads the counter table and the second writes it. Resolver `0x005F5A90` calls that same save helper after every successful counter update.
 
-## Recovered counter record
+## Recovered in-memory counter record
 
 The resolver iterates logical counter indices **1 through 99**. Each in-memory entry has a 32-byte stride. Proven fields are:
 
-| Offset | Size | Recovered meaning |
+| Memory offset | Size | Recovered meaning |
 | ---: | ---: | --- |
-| `+0x00` | fixed 10-character string | counter name |
+| `+0x00` | fixed `String * 10` = 20 bytes in VB6 memory | counter name |
 | `+0x14` | WORD | configured number of digits (`cbocifre`) |
 | `+0x16` | WORD Boolean | enable `Funzioni.Zeri` formatting (`Check1`) |
+| `+0x18` | WORD | still-unclaimed field; must be preserved |
 | `+0x1C` | Long | current counter value (`txtValore`) |
-
-Bytes not listed above remain intentionally unclaimed.
 
 `cmdNuovo` initializes the proven defaults:
 
 - digits = `6`;
 - zero-format Boolean = VB True (`0xFFFF`).
+
+## Exact `Contatori.dat` serialized record
+
+The VB6 UDT descriptor at `0x0042ACFC` proves that the 32-byte in-memory record is serialized without its memory alignment and with the fixed `String * 10` occupying **10 bytes on disk**. The exact serialized record is therefore **20 bytes**:
+
+| File offset | Size | Recovered meaning |
+| ---: | ---: | --- |
+| `+0x00` | 10 | fixed counter name bytes |
+| `+0x0A` | 2 | digits |
+| `+0x0C` | 2 | raw zero-padding Boolean WORD |
+| `+0x0E` | 2 | unknown WORD, preserved byte-for-byte |
+| `+0x10` | 4 | current counter Long |
+
+All numeric values are native little-endian x86 values.
+
+### Load helper `0x005F5E70`
+
+The helper opens `Contatori.dat` **For Binary** and performs sequential `Get` operations for logical indices **1..99**. It therefore consumes the first 99 serialized records, i.e. 1980 bytes. A canonical native file contains one additional trailing blank record that the load helper never reads.
+
+A missing/empty file is treated as an empty counter table by the managed compatibility layer. A non-empty file shorter than 99 complete records is rejected as damaged rather than silently synthesizing partially read legacy state.
+
+### Save helper `0x005F60C0`
+
+The native save path is not a direct dump of the 99 in-memory slots:
+
+1. it deletes the previous file and opens a new Binary file;
+2. loops logical indices 1..99;
+3. writes only records whose exact predicate is `Left(Name, 1) > " "`;
+4. therefore compacts active records while preserving their logical order;
+5. counts how many active records were written;
+6. runs a second loop `For i = activeCount To 99` **inclusive** and writes a blank UDT each time.
+
+The second pass writes `100 - activeCount` blank records. Consequently every canonical native save contains exactly **100 serialized records = 2000 bytes**, including at least one trailing blank record even when all 99 logical counters are active.
+
+The blank local UDT is zero-initialized by VB6, including the fixed string, so its canonical disk representation is twenty zero bytes.
+
+`LegacyCounterFileStore` reproduces this compaction and fixed 2000-byte save shape. Existing name bytes are mapped losslessly through U+0000..U+00FF so every byte survives round-trip. New names containing wider Unicode are rejected for now rather than guessing the original Windows ANSI/DBCS code page.
 
 ## `0x005F5A90` resolution
 
@@ -66,6 +100,8 @@ On a matching record it:
 
 The production smartDriver path passes raw increment **1**, so `+(CounterName)` increments its matching counter before substitution.
 
+`LegacyPersistentCounterResolver` now reproduces this load/match/increment/format/immediate-save boundary against `LegacyCounterFileStore`. It preserves the unclaimed serialized WORD while changing only the current counter value before the native-shaped compacting save.
+
 ## `Funzioni.Zeri`
 
 `Funzioni.Zeri` is native method `0x004A1D40`, vtable `+0x7DC`. Its recovered formatting expression is structurally:
@@ -83,7 +119,7 @@ Example with width 6:
 1000000 -> 000000
 ```
 
-This unusual overflow presentation is preserved in the pure compatibility semantics rather than silently modernized.
+This unusual overflow presentation is preserved in the compatibility semantics rather than silently modernized.
 
 ## `0x006079D0` / `+(...)` expansion
 
@@ -95,16 +131,12 @@ Different `+(...)` bodies are processed by subsequent iterations of `0x006079D0`
 
 ## Managed boundary
 
-`LegacyCounterTokenSemantics` encodes the proven behavior as pure state:
+The counter subsystem is no longer semantics-only:
 
-- helper addresses;
-- `Contatori.dat` filename;
-- 1..99 search range;
-- 32-byte record stride and known field offsets;
-- new-counter defaults;
-- increment-before-substitution;
-- immediate-save contract for a match;
-- exact `Zeri` width behavior;
-- replace-all behavior for identical exact tokens.
+- `LegacyCounterTokenSemantics` preserves the proven increment, formatting and replacement rules;
+- `LegacyCounterFileStore` reads/writes the recovered 20-byte UDT representation and exact native 100-record save shape;
+- `LegacyPersistentCounterResolver` performs the recovered immediate persistent increment for a matched counter;
+- unknown serialized field `+0x0E` is retained unchanged;
+- corrupted short non-empty files are rejected instead of being rewritten.
 
-It does **not** currently open, create, or rewrite `Contatori.dat`, because remaining record bytes and write-compatibility should be preserved before enabling persistent managed mutation. The `frmContatori` UI itself also remains to be rebuilt.
+Still not implemented in this slice: the `frmContatori` UI for list/create/delete/edit/reset, automatic hookup of persistent counter expansion to live hardware printing, and exact system-code-page interpretation for newly entered characters outside the lossless one-byte mapping. Those remain separate work so persistence can be validated without silently activating printer paths.
