@@ -15,6 +15,7 @@ internal static class Program
         DeviceIntegration.Attach(mainForm);
         SecurityIntegration.Attach(mainForm);
         ScriptIntegration.Attach(mainForm);
+        CounterIntegration.Attach(mainForm);
         Application.Run(mainForm);
     }
 }
