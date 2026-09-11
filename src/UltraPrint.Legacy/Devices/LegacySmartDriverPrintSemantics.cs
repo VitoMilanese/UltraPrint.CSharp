@@ -89,6 +89,15 @@ public readonly record struct LegacySmartDriverPrintStep(
     int? RawArgument = null);
 
 /// <summary>
+/// Proven branch effect immediately after the numeric EncodeChip script result is compared
+/// with zero. This is data only; it never invokes SmartCardContinue or closes a GDI job.
+/// </summary>
+public readonly record struct LegacyEncodeChipContinuation(
+    int SmartCardContinueRawArgument,
+    bool SetsSecondTransientBooleanToTrue,
+    bool ClosesCurrentPageAndDocumentImmediately);
+
+/// <summary>
 /// Proven, non-executing smartDriver.StampaRecord orchestration facts. This class models
 /// branch gates and raw constants only; it never calls ICE_API or GDI printer mutation APIs.
 /// </summary>
@@ -99,13 +108,32 @@ public static class LegacySmartDriverPrintSemantics
     public const int InteractiveModeRawTrue = -1;
     public const int InteractiveModeRawFalse = 0;
 
+    public const int SmartDriverExamplesModulePublicBaseNativeAddress = 0x62B670;
+    public const int FirstTransientBooleanNativeOffset = 0x10;
+    public const int SecondTransientBooleanNativeOffset = 0x12;
+    public const int FirstTransientBooleanNativeAddress =
+        SmartDriverExamplesModulePublicBaseNativeAddress + FirstTransientBooleanNativeOffset;
+    public const int SecondTransientBooleanNativeAddress =
+        SmartDriverExamplesModulePublicBaseNativeAddress + SecondTransientBooleanNativeOffset;
+    public const short VbBooleanTrueRaw = -1;
+    public const short VbBooleanFalseRaw = 0;
+
+    public const int NegativeEncodeChipResultContinueRawValue = 1;
+    public const int NonNegativeEncodeChipResultContinueRawValue = 0;
+    public const int RearOrFeedFallbackContinueRawValue = 1;
+
     public const string StartDocHook = "StartDoc";
     public const string StartPageHook = "StartPage";
     public const string EncodeChipHook = "EncodeChip";
     public const string EndPageHook = "EndPage";
     public const string EndDocHook = "EndDoc";
 
-    private static readonly int[] SmartCardContinueValues = [1, 0, 1];
+    private static readonly int[] SmartCardContinueValues =
+    [
+        NegativeEncodeChipResultContinueRawValue,
+        NonNegativeEncodeChipResultContinueRawValue,
+        RearOrFeedFallbackContinueRawValue
+    ];
     private static readonly string[] ScriptHookNames =
         [StartDocHook, StartPageHook, EncodeChipHook, EndPageHook, EndDocHook];
 
@@ -144,14 +172,38 @@ public static class LegacySmartDriverPrintSemantics
     }
 
     /// <summary>
+    /// Native __vbaVarTstLt compares the EncodeChip result with numeric zero. For a negative
+    /// result StampaRecord calls SmartCardContinue(hDC, 1) and immediately closes page/doc;
+    /// otherwise it sets the second smartdriverExamples public Boolean and calls raw value 0.
+    /// The model accepts a signed integer deliberately rather than guessing full VB Variant coercion.
+    /// </summary>
+    public static LegacyEncodeChipContinuation ResolveEncodeChipContinuation(int numericResult) =>
+        numericResult < 0
+            ? new(
+                NegativeEncodeChipResultContinueRawValue,
+                SetsSecondTransientBooleanToTrue: false,
+                ClosesCurrentPageAndDocumentImmediately: true)
+            : new(
+                NonNegativeEncodeChipResultContinueRawValue,
+                SetsSecondTransientBooleanToTrue: true,
+                ClosesCurrentPageAndDocumentImmediately: false);
+
+    /// <summary>
+    /// The second public Boolean is checked immediately before FeedCard. A nonzero value
+    /// branches directly to final cleanup. Its source-level name/meaning is still unknown.
+    /// </summary>
+    public static bool ShouldExitAtPreFeedTransientGate(bool secondTransientBoolean) =>
+        secondTransientBoolean;
+
+    /// <summary>
     /// Native code reads frmCarta.HasRear before entering its later rear-side continuation.
     /// This is deliberately kept as a pure gate rather than enabling any printer action.
     /// </summary>
     public static bool ShouldEnterRearSide(bool hasRear) => hasRear;
 
     /// <summary>
-    /// Cleanup always clears the two transient smartDriver flags, calls
-    /// SetInteractiveMode(hDC, FALSE), and writes frmCarta.InteractiveMode=False.
+    /// Cleanup clears both public WORD Booleans in the smartdriverExamples BAS module,
+    /// calls SetInteractiveMode(hDC, FALSE), and writes frmCarta.InteractiveMode=False.
     /// </summary>
     public static LegacySmartDriverPrintStep CleanupStep =>
         new(LegacySmartDriverPrintStepKind.DisableInteractiveMode, InteractiveModeRawFalse);
