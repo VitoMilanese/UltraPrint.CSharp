@@ -1,0 +1,118 @@
+# UltraPrint 2.2.115 functional-parity inventory
+
+The target of this repository is **iso-functional replacement** of the supplied UltraPrint 2.2.115 installation, not merely a `.ly` viewer/editor.
+
+Status values:
+
+- **Implemented** — managed replacement exists and is usable.
+- **Partial** — a real subset exists, but legacy behavior is not yet complete.
+- **Missing** — recovered from the original binary but not implemented yet.
+- **N/A** — legacy restriction/infrastructure that does not need to be reproduced to preserve useful application functionality.
+
+## Main application and editor
+
+| Original object/workflow | Recovered behavior | Status | Managed replacement / remaining work |
+| --- | --- | --- | --- |
+| `MainForm` | MDI shell, New/Open/Save/Save As, Print/Preview/Page Setup, database/devices/scripts, sequence, login/privileges, front/back, field/record management | **Partial** | Open/save, print/preview/page setup, layout properties, side/field commands, Database/Records workspace, Sequence sheet printing, device diagnostics, Security/operator workflows, legacy VBScript workspace and **Tools -> Counters...** exist. Full device editing, automatic script lifecycle integration and exact privilege command gating remain. |
+| `frmCarta` | Card editor: create/select fields, drag, measurements, rulers, front/back, photo, record-to-card, Campo.ini sync | **Partial** | Managed canvas, select/move/resize, mm geometry, grid/snap, insert/duplicate/delete, z-order, preview and runtime Record2Card binding exist. The recovered `HasChip` capability used by database batch printing derives from decoded legacy type-10 SmartCara fields. Full style/property byte mapping, tables, rulers and photo capture remain. |
+| `Dimensioni` | Card dimensions | **Implemented** | Width/height/DPI layout properties dialog. |
+| `frmPrinting` | Database-batch `Inizia` / `Annulla` shell with `[Setup] Intervallo` countdown | **Partial/strong** | Managed direct Print All now reproduces the separate modeless shell, native default interval `5`, UP.ini persistence, cooperative Inizia/Annulla state, live card/side/countdown status, and the recovered `frmCarta.HasChip` gate. Chip layouts normalize intervals below 30 seconds to 30; non-chip layouts do not wait. Real smart-card/device timing still requires hardware-side validation. `Sequenza.Pausa` / `cmdStop` remain separate controls. |
+| `Sequenza` | Page imposition, rows/columns, margins, spacing, horizontal/vertical fill, cut-and-stack, virtual sheet formats, paper orientation, front/back, pause/stop, page navigation, record search/positioning, print page/all | **Partial/strong** | Managed Sequence workspace implements recovered `MargineDestro` left-origin X offset, top margin, native `Passo*` gaps, `Orizzontale` / `Verticale` traversal, `Taglio` cut-and-stack ordering, `Campo.ini [Formati]` -> `cboDimensioni` virtual sheet sizing, `FoglioPortrait` / `FoglioLandscape`, first-slot selection, sheet navigation, `SoloFronte` / `FronteRetro` / `SoloRetro`, `RetroaSpecchio` horizontal back-slot mirroring, signed `OffsetRetroX/Y`, native-style Pause/Resume, stop-after-current-logical-sheet and live sheet/side progress, Page Setup and current/all sheet preview/print. Managed crop marks remain explicitly non-legacy. The print path compensates printable-area hard-margin origin to retain legacy physical-page coordinates. Legacy `.Seq` persistence covers the proven controls; `Pescarecord` and `PosizionaPagina` preserve recovered native behavior. Exact `cboDimensioni` -> physical printer paper-size behavior, real-driver clipping/duplex validation and device-specific printing remain. |
+| `frmApri` | Job/layout open browser | **Missing** | Current app has standard file-open dialog only. |
+| `frmJob` | Job/layout management | **Missing** | Create/delete/select job workflows not ported. |
+
+## Data, records and database design
+
+The supplied installer contains DAO 3.5/3.6 and Jet 3.5/4.0 components. Native strings also expose the original filters `Access (*.mdb)`, `Dbf`, `Excel`, CSV and text, plus `Operatori.FFM`. The managed layer therefore treats `.mdb/.ffm` as Jet/Access-compatible sources and uses ACE 16/12 first with Jet 4.0 as the legacy x86 fallback.
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| `Funzioni` | document CRUD, DB/report conversion, SQL, dataset access, variables, formatting, scripts, login/common utilities | **Partial** | Managed dataset open/query, Record2Card and operator-login exist. Script preprocessing/dispatch and the native 1024-slot variable table are implemented, with proven helpers exposed to scripts. Document CRUD, formatting and the remaining script object surface remain. |
+| `frmDatabase` | DB selection, tables/fields, SQL query/edit/save, print all | **Partial** | Database/Records workspace opens Access/FFM/DBF/Excel/CSV/text, lists tables, runs SELECT and action SQL, browses records and prints one/all. Exact legacy query/database metadata persistence and schema-design tabs remain. |
+| `FrmDati` | data loading/database creation | **Partial** | Data loading and record browsing exist. Database creation/import flow remains. |
+| `Tabella` | record/table display and photo handling | **Partial** | Managed record grid, first/previous/next/last navigation, binding, card preview and printing exist. Script record selection now shares the visible current row. Editing/write-back and photo acquisition remain. |
+| `frmTabelle` | table/schema creation and field typing | **Missing** | Need schema editor/create/alter table workflow. |
+| `FormQBE` | query-by-example / SQL parameter builder | **Partial** | The compact field/operator/value QBE flow used by `Sequenza.Pescarecord` is recovered and implemented, including starts/contains/ends, equality/inequality, comparison/range and boolean conditions. Full reuse as a general SQL parameter builder and native type/date formatting quirks remain. |
+| `db.exe` helper | open dataset, execute SQL/file, create/fill tables, import/export helpers | **Partial** | Dataset open, table browse, SQL query/action and several legacy source formats are absorbed into the managed data layer. Create/import/export/schema utilities remain. |
+| database field binding | placeholders and `Record2Card`/`RecordToReport` | **Partial/strong** | Current rows substitute text/photo fields and managed field-to-column overrides are supported. Newly created bindings are persisted non-destructively in `.ly.data.json` until the exact legacy `Campo/DataField` byte offset is confirmed from a bound legacy fixture. |
+| record/batch print | `StampaRecord`, `StampaTutti` | **Partial/strong** | Current record, all loaded records, and sheet-imposed sequences can preview/print using the same card renderer. Legacy sequence page-origin/cut-and-stack/back geometry and Sequence Pause/Stop behavior are restored. Database Print All now includes recovered `frmPrinting` Inizia/Annulla, UP.ini Intervallo persistence, HasChip-gated minimum-30-second inter-card countdown and cooperative cancel-after-current-card. Exact printer paper selection/clipping, real duplex/chip timing and device-specific behavior remain. |
+
+## Text, scripts, counters and barcode
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| `frmText` | text/memo editor, find/link | **Missing** | Need dedicated text editor and native-compatible field-link editing. |
+| `frmCodice` | script/code tree, source editor, save and error-location UI | **Partial/strong** | Managed **Tools -> Legacy VBScript...** workspace discovers/opens/edits/saves `.vbs` and compiles through the recovered preprocessing/AddProg path. Native tree organization and full error-438 line remapping remain. |
+| `Funzioni.Vbscript` / `AddProg` / `AddObjects` | layout script lifecycle, object injection, macro preprocessing and event dispatch including `Load` | **Partial/strong** | All 20 native `AddObject` names, lifecycle/path rules, preprocessing, streaming AddProg execution, direct Run, optional arguments, `NO CODE` and deferred unload mechanics are recovered/implemented and regression-tested. Proven facades cover `Me`, `Mainform`, `Db`/`frmDatabase`, `Sequenza`/`Stampa`, `Carta`, `Tabella`, `Funzioni`, `File` and `App`; remaining objects and safe automatic layout execution remain. |
+| `frmContatori` | counters, digits, create/delete/reset/update | **Partial/strong** | **Tools -> Counters...** restores the recovered 1..99 logical counter editor over `App.Path\Contatori.dat`: 1..20 digit choices, list/select, New, Delete, current value, leading-zero flag and OK-save. Native first-match, capitalization, fixed-10-character name, Delete/New reuse and deferred-save quirks are preserved. Exact legacy ANSI/DBCS code-page behavior for newly entered characters outside the lossless byte range still needs validation. |
+| `frmBarcode` | barcode type/size selection | **Missing** | Need barcode renderer and field type mapping. |
+
+## Images and acquisition
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| `frmImg` | image browser, LEADTOOLS editing, brightness/contrast, zoom, crop rectangle, scan | **Partial** | Image loading/rendering and database-supplied photo paths work; editing, crop, brightness/contrast and scanner acquisition remain. |
+| `frmCapture` | capture source/format/compression/display and capture | **Missing** | Need WIA/TWAIN or modern acquisition adapter. |
+| `SmartFormDll.Image` | scan, device, zoom, resolution, display, append pages | **Missing** | Must be replaced by managed image/acquisition service. |
+
+## Printing and hardware
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| standard Windows print path | `MainForm.mnuFilePrint`, preview, page setup, `StampaRecord` | **Partial/strong** | Managed PrintDocument supports layout, current/all database records and sequence sheet imposition. Sequence printing translates from .NET's printable-area Graphics origin back to the legacy physical-page origin using printer hard margins. `cboDimensioni` virtual sheet size remains separate from driver paper settings; `Taglio`, native output modes, horizontal back-slot mirror, back offsets and cooperative Sequence Pause/Stop are reproduced. Database batch printing also reproduces `frmPrinting` Inizia/Annulla and its HasChip-gated interval countdown. Read-only ICE printer info plus the recovered card-job status-monitor contract now exist. `MainForm.PrinterEscape` is proven to be GDI `PASSTHROUGH` (escape 19) followed by `Printer.EndDoc`, with exact native frame `Chr(0) & Chr(Len(payload)) & payload & Chr(0)`, `Len(payload)` as `cbInput` and `Null` output. Managed emission remains disabled pending ANSI/DBCS marshaling and real-driver validation. Real-printer paper/clipping/duplex/chip timing and device-specific submission remain. |
+| `frmDispositivi` | printer/device selection, add/remove/configure, generate/edit script | **Partial/strong** | **Devices -> Printer / Device diagnostics...** restores the proven `Campo.ini` profile surface: current device, `[Moduli Hardware]`, `<printer>-Configurazione`, `Driver-<printer>`, installed Windows-printer discovery and conservative current-device persistence. It also exposes an explicit read-only ICE status action. Add/remove/profile-property editing, module sequence editing and native script generation/editing remain. |
+| `smartDriver` | printer API version/model/serial/error, magstripe encode/read/print, cleaning, firmware, smart-card init | **Partial/strong** | Managed compatibility semantics now preserve the recovered production flow without executing hardware mutation: Optional Variant Missing => False; optional magnetic-track preparation; interactive mode; StartDoc/StartPage script hooks; optional rotate; `_FeedCard(hDC,0x11)` result gate; script `EncodeChip`; exact negative/non-negative `_SmartCardContinue(1/0)` split; prepared `Traccia1/2/3` data and optional `EncodeMagStripeWithApi`; Front side helper (`0`) followed by Rear (`1`) only when `HasRear`; FeedCard-failure `_SmartCardContinue(1)` close path; cleanup disables interactive mode. Active hardware mutation remains disabled pending real-device validation. |
+| `frmTracce` | magnetic track configuration | **Missing** | Track 1/2/3 preparation/expansion semantics are substantially recovered, but the configuration UI and live hardware pipeline are not yet restored. |
+| `frmMostraBanda` | magnetic stripe position display | **Missing** | Need stripe overlay/preview. |
+| `Chip` | chip module form | **Missing** | Need smart-card adapter boundary and UI. |
+| `SmartFormDll.Report` | `PrintPage`, `PrintGrid`, layout/field/record source, tracks | **Partial** | Managed card/record renderer plus sequence sheet imposition covers core PrintPage/PrintGrid-style behavior; recovered sequence page coordinates, cut-and-stack, generic back-slot geometry and cooperative Sequence job control are implemented. Tracks and device-specific output remain. |
+| `ICE_API` / printer wrappers | vendor/device API calls | **Partial/strong** | `LegacyIceApiProbe` isolates the external `ICE_API.DLL`, enforces the recovered 32-bit stdcall ABI and catalogs/validates all 24 exact exports. `LegacyIceApiReader` safely reads polling/model/serial/mag-head/job/error state; `LegacyIceCardJobMonitor` reproduces `_GetCardId -> _GetCardStatus` completion tracking for an already-owned HDC; `LegacySmartDriverPrintSemantics` records the proven production print transitions as non-executing state. No ICE cancel export and no `AbortDoc`/`KillDoc`/`CancelDC` path has been proven, so device-level cancellation is not invented. |
+
+## Operators, security and licensing
+
+The original binary contains `Funzioni.CheckPassword`, `Funzioni.ChekPassword`, `Funzioni.Login`, `MainForm.PuoFare` and `MainForm.SetPrivilegi`, plus direct `Operatori` SQL for password, level, privilege and group. The exact command-gating algorithm is not yet claimed because no real legacy `Operatori.FFM` was supplied for side-by-side validation.
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| `frmLogin` | operator login | **Partial/strong** | Security menu, operator enumeration, masked-password login/logout and current-session display are implemented against the Jet/ACE `Operatori.FFM` path. Exact legacy password comparison/transformation and startup enforcement still require a real FFM/runtime comparison. |
+| `frmPassword` | set/check password | **Partial/strong** | `/erasepw` compatibility plus interactive current-operator password change and administrator password reset are implemented. Exact legacy password storage/case semantics remain to validate. |
+| `frmPrivilegi` | operator privileges | **Partial** | Managed operator CRUD exposes raw `Livello`, `Privilegio` and `Gruppo`; an optional privilege-description grid exists. Exact `PuoFare`/`SetPrivilegi` mapping to application commands is deliberately not guessed. |
+| operator management | create/update/delete/list operators and groups | **Partial/strong** | CRUD is implemented using the recovered `Operatori` columns; native-confirmed missing `Privilegio` and `Gruppo` migrations are applied conservatively. A production FFM is still needed for write-compatibility validation. |
+| `frmLic` | old machine-bound registration/license checks | **N/A** | New implementation should not require the obsolete UltraPrint 2003 license mechanism. Import of any license-derived configuration can be added only if functionally required. |
+
+## Options and shell utilities
+
+| Original object/workflow | Recovered behavior | Status | Remaining work |
+| --- | --- | --- | --- |
+| `Opzioni` | large options/configuration UI plus `Chiudimi` unload helper | **Missing/partial evidence** | `Chiudimi` is mapped and its script unload flag behavior is reproduced in the scripting layer; the remaining options/configuration UI must be rebuilt incrementally. |
+| `File` | INI/files/log/archive/zip/encrypt/decrypt/path helpers | **Partial/strong** | Besides INI/asset handling, the script-facing `SoloExt`, `SoloNomeFile`, `SoloPath` and `Esiste` subset is reproduced, including wildcard existence checks. Archive/encryption and remaining file utilities are not all ported. |
+| `frmAbout` | About/system info | **Partial** | Basic About dialog exists; old system-info helper is unnecessary unless a workflow depends on it. |
+| `frmWait` / `frmSplash` | wait/splash UI | **Missing** | Low-priority presentation parity. |
+| `cLogo` | logo/gradient drawing helper | **Missing** | Cosmetic; low priority after functional parity. |
+
+## Compatibility formats
+
+| Format/configuration | Status | Notes |
+| --- | --- | --- |
+| `Campo.ini` | **Partial/strong** | ANSI/order-preserving reader/writer and `[$]` current-value semantics recovered. Sequenza reproduces native `[Formati]` keys 1..20 lookup and `[widthxheight cm]` virtual-sheet parsing. Device compatibility now also reads `[Setup] Dispositivo Corrente`, `[Moduli Hardware]`, `<printer>-Configurazione` and `Driver-<printer>`, and conservatively writes the current-device key. More consumers still need implementation. |
+| `.ly` | **Partial/strong** | Dimensions, DPI and 64x264-byte field table partially decoded. Unknown bytes are preserved; insertion/duplication/deletion reuse raw templates. Global database/query and per-field binding offsets are deliberately not written until verified. |
+| `.ly.data.json` | **Managed compatibility state** | Non-destructive sidecar for database path/query/table and newly created field bindings. It exists specifically to avoid corrupting unknown legacy `.ly` bytes and can be migrated once native offsets are confirmed. |
+| `.sequence.json` | **Managed compatibility state** | Version 5 persists recovered `Passo*` gap semantics, fill direction, paper orientation, raw `cboDimensioni`, `Taglio`, `RetroaSpecchio` and signed back offsets. v4 migrates the newly recovered cut/back controls to disabled/zero defaults while preserving prior side/format state; v3/v2/v1 retain their existing orientation/gap migrations. Proven legacy controls (`Righe`, `Colonne`, `MargineDestro`, `MargineAlto`, `Passo*`, `OffsetRetro*`, `Orizzontale`, `Verticale`, `Taglio`, `cboDimensioni`, `FoglioPortrait`, `FoglioLandscape`, `RetroaSpecchio`, `SoloFronte`, `FronteRetro`, `SoloRetro`, `PaginaSingola`) are read/written through `[Sequenza]` `.Seq`; transient `Fronte`/`Retro` and unknown keys are preserved. Pause/Stop/progress are transient job state and are not persisted. |
+| `.vbs` / `Script` directories | **Partial/strong** | Root/application discovery, ScriptControl ProgID, 20 exposed names, lifecycle names, syntax normalization, substitution/macros, streaming AddProg execution, direct Run, optional arguments, `NO CODE` and deferred unload mechanics are recovered. The script workspace uses this pipeline; automatic layout execution remains disabled pending broader object-facade coverage. |
+| `UP.ini` | **Partial/strong** | `/erasepw` `[Setup] Pw` compatibility plus native `frmPrinting` `[Setup] Intervallo` load/save are implemented. Intervallo uses native default 5 and is raised to at least 30 only for HasChip batch countdowns. Other settings remain. |
+| `Operatori.FFM` | **Partial/strong** | Recovered lookup order is `Db\Operatori.FFM` then root fallback. Existing files open through ACE16/ACE12/Jet4; managed creation/CRUD/login exist, pending validation against a real legacy FFM. |
+| `Contatori.dat` | **Partial/strong** | Recovered binary codec uses 99 logical records and native 100-record/2000-byte compacting saves with exact 20-byte on-disk UDT fields; unknown WORD bytes are preserved. Persistent `+(Counter)` resolution performs native increment/format/immediate-save behavior. The counter editor uses the same store. A non-empty real legacy fixture and exact ANSI/DBCS input code page are still desirable for side-by-side validation. |
+
+## Definition of done
+
+The replacement is considered iso-functional only when the following are true:
+
+1. Existing customer `.ly`, `Campo.ini`, database and job data needed in production open without manual conversion.
+2. Layout editing covers every field type/property used by real legacy layouts and round-trips without loss.
+3. Record/database workflows can create, query, edit, bind and print data like the original program.
+4. Script/counter/barcode workflows used by real installations have managed equivalents.
+5. Print preview, direct print, sequence/batch printing and front/back workflows match legacy geometry.
+6. Required current card printers, magnetic-stripe, chip and scanner devices work through explicit adapters.
+7. Each migrated workflow is verified side-by-side against UltraPrint 2.2.115 using the same inputs and expected outputs.
+
+This file is the parity checklist. A feature is not marked Implemented merely because a menu item or placeholder UI exists.

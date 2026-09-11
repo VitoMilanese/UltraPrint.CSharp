@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/UltraPrint.Core/UltraPrint.Core.csproj" />
+    <ProjectReference Include="../../src/UltraPrint.Legacy/UltraPrint.Legacy.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../samples/legacy/TPMFAO19/TPMFAO19.ly" Link="Fixtures/TPMFAO19.ly" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

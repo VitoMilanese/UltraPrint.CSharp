@@ -32,13 +32,56 @@ Addresses are native entry VAs recovered from VB6 metadata, event-link thunks, p
 | AddObjects | 0x0049EE60 | 0x7C0 |
 | CaricaDocumento | 0x004A0600 | 0x7C4 |
 | Delay | 0x004A06D0 | 0x7C8 |
+| GetInside | 0x004A0810 | 0x7CC |
 | ExecuteSql | 0x004A23D0 | 0x7E8 |
+| Parola | 0x004A3110 | 0x7F0 |
+| Richiesta | 0x004A35B0 | 0x7F4 |
+| Sostituisci | 0x004A36F0 | 0x7F8 |
+| SaveFormPosition | 0x004A3A60 | 0x7FC |
+| SostituisciRiga | 0x004A3F50 | 0x800 |
+| LoadFormPosition | 0x004A4A60 | 0x804 |
 | Opendataset | 0x004A65C0 | 0x814 |
 | CheckPassword | 0x004AF750 | 0x824 |
 | GetVariabile | 0x004AFEF0 | 0x82C |
+| SetVariabile | 0x004B0220 | 0x830 |
+| IncVariabile | 0x004B0560 | 0x834 |
+| Interpretariga | 0x004B1DF0 | 0x840 |
+| PreparaCodice | 0x004B5800 | 0x844 |
 | AddProg | 0x004B6420 | 0x848 |
 | Vbscript | 0x004B7D00 | 0x84C |
 | Login | 0x004BDC40 | 0x89C |
+
+### Script lifecycle evidence
+
+The global layout lifecycle at `0x00601EA0` invokes `AddObjects`, then `AddProg`, then `Vbscript("Load")`, before `frmCarta.DisegnaCampi`.
+
+`AddObjects` performs twenty `ScriptControl.AddObject(name, object, True)` calls. Recovered names are `Me`, `Mainform`, `Preview`, `Db`, `Sequenza`, `Stampa`, `frmDatabase`, `Carta`, `Chip`, `Tabella`, `frmlogin`, `Fn`, `Funzioni`, `File`, `SmartDriver`, `Dispositivi`, `Printer`, `Screen`, `ClipBoard`, `App`.
+
+`PreparaCodice` repeatedly calls the recovered replacement helper and then `Interpretariga`. `Interpretariga` first invokes `SostituisciRiga`, which lazily reads `App.Path\SOSTITUZ.TXT` as comma-delimited search/replacement pairs, supports positive numeric replacement values as ANSI character codes, and applies non-empty rules sequentially with binary/case-sensitive matching. It then processes `@()`, `$()`, `?()`, `@GETFILE()`, `@DIRECTORY()` and `@COMPUTER()`.
+
+`AddProg` opens a script file, processes it line-by-line and uses a one-way Boolean mode flag. Lines before the first trimmed/lower-cased line containing `sub` or `function` go to Script Control `ExecuteStatement`. The first such match sets the flag permanently; that line and every later prepared line are accumulated with CRLF and passed once to `AddCode` at EOF. No native write resets the flag before EOF, and the final `AddCode` path is reached even when the accumulator is empty.
+
+`AddProg` also references Script Control `Error`, `Description`, `Line` and `Column`, plus `frmCodice` RichTextBox selection APIs for locating script errors.
+
+`Vbscript` accepts a ScriptControl-like object, prefix, event/base name and seven optional Variant arguments. It forms `prefix_event` (or only event for an empty prefix), switches to `P_<prefix>` when `Val(prefix) > 0`, removes spaces and changes uppercase `X` to `*`. The normalized string is passed **directly** to Script Control `Run` (DISPID 2003) with zero through seven present optionals; there is no separate UltraPrint wildcard-resolution loop.
+
+Before `Run`, native code probes the first ScriptControl module/procedure and returns literal `NO CODE` if no usable procedure exists. `Vbscript` also increments a nested dispatch-depth Variant at entry and decrements it at exit.
+
+When the shared `Chiudimi` flag is True and that depth is one, native code recursively dispatches prefix `Form` + event `Unload` (all seven optionals Missing), producing `Form_Unload`; then sets the hidden `Funzioni` form's standard VB6 `Visible` property to False, calls Script Control `Reset`, logs `Form_Unload ` plus the control name, clears the flag and unwinds the outer call.
+
+## Opzioni
+
+| VB6 method/event | VA | confidence |
+|---|---:|---|
+| Form_KeyDown | 0x004CBC20 | confirmed event |
+| Chiudimi | 0x004CBFA0 | strong: exact method-order slot and sets shared unload flag True |
+| Form_Load | 0x004CC010 | confirmed event |
+| Form_Resize | 0x004CC0A0 | confirmed event |
+| Form_Unload | 0x004CF6A0 | confirmed event; clears same unload flag |
+
+`PreparaCodice` rewrites `Unload Me` to `Chiudimi`. The `Chiudimi` routine sets the same global VB Boolean tested by `Funzioni.Vbscript`; `Opzioni.Form_Unload` clears it. This cross-reference makes the method mapping substantially stronger than a name-only inference.
+
+The vtable slot `+0x1BC` used in the special Vbscript unload path is strongly identified as the standard VB6 form `Visible` Boolean setter: the same slot is called with `False` on forms that are hidden and with `True` on `MainForm` when shown.
 
 ## frmCarta
 
