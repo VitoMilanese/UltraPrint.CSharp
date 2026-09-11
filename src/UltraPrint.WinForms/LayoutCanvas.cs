@@ -126,6 +126,16 @@ public sealed class LayoutCanvas : Control
         Invalidate();
     }
 
+    /// <summary>
+    /// Lets field-specific editors participate in the same dirty-state/property refresh pipeline
+    /// used by drag/resize edits without reaching into MainForm private state.
+    /// </summary>
+    public void NotifyFieldEdited()
+    {
+        FieldChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
+    }
+
     protected override bool IsInputKey(Keys keyData)
     {
         var key = keyData & Keys.KeyCode;
@@ -364,6 +374,9 @@ public sealed class LayoutCanvas : Control
             case LayoutFieldKind.Text:
                 DrawTextField(graphics, field, rect, scale);
                 break;
+            case LayoutFieldKind.Barcode:
+                DrawBarcodeField(graphics, field, rect, scale);
+                break;
             case LayoutFieldKind.Table:
                 DrawTableField(graphics, field, rect);
                 break;
@@ -455,6 +468,50 @@ public sealed class LayoutCanvas : Control
             else
             {
                 graphics.DrawString(content, drawingFont, brush, rect, format);
+            }
+            graphics.Restore(state);
+        }
+    }
+
+    private void DrawBarcodeField(Graphics graphics, LayoutField field, RectangleF rect, float scale)
+    {
+        if (string.IsNullOrEmpty(field.LegacyPayload)) return;
+
+        LegacyBarcodeFormatter.TryFormat(field.Text.FontName, field.LegacyPayload, out var glyphs);
+        if (glyphs.Length == 0) return;
+
+        var pixelSize = Math.Max(5f, (float)(field.Text.FontSize * 25.4 / 72.0 * scale));
+        Font drawingFont;
+        try
+        {
+            drawingFont = new Font(field.Text.FontName, pixelSize, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+        catch
+        {
+            drawingFont = new Font(Font.FontFamily, pixelSize, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        using (drawingFont)
+        using (var brush = new SolidBrush(OleToColor(field.Appearance.ForeColorOle, Color.Black)))
+        using (var format = new StringFormat
+        {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Near,
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap
+        })
+        {
+            var state = graphics.Save();
+            if (field.Appearance.RotationDegrees != 0)
+            {
+                graphics.TranslateTransform(rect.X, rect.Y);
+                graphics.RotateTransform(field.Appearance.RotationDegrees);
+                graphics.DrawString(glyphs, drawingFont, brush,
+                    new RectangleF(0, 0, rect.Width, rect.Height), format);
+            }
+            else
+            {
+                graphics.DrawString(glyphs, drawingFont, brush, rect, format);
             }
             graphics.Restore(state);
         }

@@ -16,6 +16,7 @@ internal static class Program
         SecurityIntegration.Attach(mainForm);
         ScriptIntegration.Attach(mainForm);
         CounterIntegration.Attach(mainForm);
+        BarcodeIntegration.Attach(mainForm);
         Application.Run(mainForm);
     }
 }

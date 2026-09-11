@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using UltraPrint.Core.Models;
 using UltraPrint.Legacy.Layout;
 
 internal static class BarcodeCompatibilityTests
@@ -25,6 +26,36 @@ internal static class BarcodeCompatibilityTests
         AssertTrue(!LegacyBarcodeFormatter.TryFormat("Arial", "123", out var raw),
             "ordinary fonts do not invoke barcode formatter");
         AssertEqual("123", raw, "unknown barcode font leaves data unchanged");
+
+        TestBarcodeLayoutRoundTrip();
+    }
+
+    private static void TestBarcodeLayoutRoundTrip()
+    {
+        var codec = new UltraPrint22115LayoutCodec();
+        var layout = codec.CreateNewLayout("BarcodeRoundTrip");
+        var barcode = codec.CreateField(layout, LayoutFieldKind.Barcode, LayoutSide.Front, legacyTypeCode: 4);
+        barcode.Name = "Barcode_Test";
+        barcode.LegacyPayload = "12345678";
+        barcode.Text.FontName = "3 OF 9";
+        barcode.Text.FontSize = 18.5;
+
+        var path = Path.Combine(Path.GetTempPath(), "UltraPrint.Barcode." + Guid.NewGuid().ToString("N") + ".ly");
+        try
+        {
+            codec.Save(layout, path);
+            var loaded = codec.Load(path);
+            var recovered = loaded.Fields.Single(field => field.Kind == LayoutFieldKind.Barcode);
+
+            AssertEqual(4, recovered.LegacyTypeCode, "barcode legacy type survives .ly round-trip");
+            AssertEqual("12345678", recovered.LegacyPayload, "barcode payload survives .ly round-trip");
+            AssertEqual("3 OF 9", recovered.Text.FontName, "barcode font survives .ly round-trip");
+            AssertEqual(18.5, recovered.Text.FontSize, "barcode font size survives .ly round-trip");
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 
     private static void AssertFormat(string fontName, string value, string expected)
