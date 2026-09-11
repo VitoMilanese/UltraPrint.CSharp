@@ -70,7 +70,46 @@ Native helper routines called by the smartDriver buttons prove these relationshi
 - `GetPrinterModelName`, `GetPrinterSerialNumber` and `GetMagstripeHeadType` all use `_GetCardPrinterInfoA@20` with different native information selectors and a two-pass buffer-allocation pattern.
 - `GetHelpFileName` uses `_GetHelpFileNameA@16`.
 
-The exact pointer/structure signatures for those buffer APIs are deliberately not guessed yet. They remain behind the adapter boundary until the corresponding argument layouts are recovered or a trustworthy vendor header/runtime is supplied.
+The pointer/buffer contracts for the read-only status helpers are now recovered closely enough to reproduce the native queries without calling the mutating printer functions.
+
+## Exact read-only status/info ABIs
+
+Native call-site stack reconstruction proves these x86 stdcall signatures:
+
+```c
+BOOL GetCardPrinterInfoA(
+    LPCSTR printerName, DWORD level, LPBYTE pData, DWORD cbBuf, LPDWORD pcbNeeded);
+
+BOOL GetCardPrinterStatusA(
+    LPCSTR printerName, DWORD level, LPBYTE pData, DWORD cbBuf,
+    LPDWORD pcbNeeded, LPDWORD pcReturned);
+
+BOOL GetCardPrinterErrorsA(
+    LPCSTR printerName, DWORD level, LPBYTE pData, DWORD cbBuf,
+    LPDWORD pcbNeeded, LPDWORD pcReturned);
+
+BOOL GetCardPrinterPollingStateA(LPCSTR printerName, LPDWORD state);
+```
+
+The `pcReturned` semantic name is based on the classic array-query pattern; UltraPrint passes a second `DWORD*` and does not consume it. All three variable-buffer helpers use a two-pass call: first with `cbBuf=0` to obtain `pcbNeeded`, then with an allocated buffer of that size.
+
+Recovered levels/record prefixes are:
+
+| Query | Level | Native bytes consumed by UltraPrint | Recovered value |
+| --- | ---: | ---: | --- |
+| printer model | 1 | 12-byte prefix | first DWORD is ANSI model-name pointer |
+| printer serial | 2 | 32-byte prefix | first DWORD is ANSI serial-number pointer |
+| magnetic head | 4 | 28-byte prefix | first four DWORDs encode installed/enabled/head type |
+| printer status | 1 | 16-byte record | first DWORD is active job id |
+| printer errors | 1 | 16-byte record | first DWORD is ANSI error-text pointer |
+
+`GetMagstripeHeadType` interprets the level-4 first four DWORDs literally: either of the first two zero means `not installed`; third zero means `not enabled`; fourth value 1 means `IAT`, value 2 means `NTT`, and other values remain `Unknown`.
+
+`GetCardPrinterPollingStateA` returns the states used by the native messages: `0 = PRINTER IS RESPONDING`, `1 = PRINTER IS NOT RESPONDING`, `2 = PRINTER IS SUSPENDED`. `TogglePollingState` can subsequently call `_ResumePrinterPollingA@8`, but the managed diagnostics reader deliberately does not expose that mutating operation.
+
+The native `GetPrinterError` button reads `_GetCardPrinterErrorsA@24` and then calls `_ClearAllCardErrorsA@4`. The managed **Read ICE status** command intentionally stops after the read, so inspecting errors cannot clear the printer's error queue.
+
+A surviving public ICE API declaration independently confirms the x86 card-status ABI used by later `PrintWithCardStatus` work: packed `CARDIDTYPE` is 12 bytes (`DWORD JobId`, `DWORD CardNum`, `HANDLE hPrinter`), `CARD_INFO_1` is two `BOOL`s (8 bytes), `CARD_INFO_2` is two `DWORD`s plus `SYSTEMTIME` (24 bytes), `GetCardId(HDC, LPCARDIDTYPE)` takes 8 stack bytes, and `GetCardStatus(CARDIDTYPE by value, DWORD level, LPBYTE, DWORD, LPDWORD)` takes 28. The managed types are data-only in this slice; those card/job calls are not invoked yet.
 
 ## `frmDispositivi` / Campo.ini configuration surface
 
@@ -108,6 +147,7 @@ The first managed hardware slice intentionally stops before sending real printer
 
 - `LegacyDeviceConfigurationStore` restores the proven frmDispositivi profile/current-device configuration surface.
 - `LegacyIceApiProbe` catalogs all 24 recovered exports, refuses to load the x86 ABI from a 64-bit process, validates exports when an x86 vendor DLL is available, and calls only the side-effect-free major/minor version functions.
-- **Devices -> Printer / Device diagnostics...** exposes configured profiles, enabled modules, installed Windows printers, the current device and ICE_API compatibility state.
+- `LegacyIceApiReader` adds explicit read-only polling/model/serial/magnetic-head/active-job/first-error queries using the recovered two-pass buffer contracts. Each query is isolated so a vendor failure becomes a diagnostic warning rather than silently enabling another hardware action.
+- **Devices -> Printer / Device diagnostics...** exposes configured profiles, enabled modules, installed Windows printers, the current device and ICE_API compatibility state. **Read ICE status** is explicit; refreshing the form does not contact the printer for status/info beyond the existing API-version probe.
 
-This creates the adapter boundary required for subsequent card-status/cancel work without accidentally running cleaning, firmware, feed, magnetic-stripe or smart-card operations against unknown hardware.
+This preserves a hard boundary around printer mutation: diagnostics never clear errors, resume/suspend polling, clean/update firmware, feed a card, encode magnetic data, initialize a smart card or submit a print job.

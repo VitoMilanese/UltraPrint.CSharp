@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using UltraPrint.Legacy.Configuration;
 using UltraPrint.Legacy.Devices;
 
@@ -10,7 +11,9 @@ internal static class DeviceCompatibilityTests
         TestDeviceConfiguration();
         TestCurrentDevicePersistence();
         TestIceApiCatalog();
+        TestIceApiReadContracts();
         TestIceApiProbeFallback();
+        TestIceApiReaderFallback();
     }
 
     private static void TestDeviceConfiguration()
@@ -71,6 +74,47 @@ internal static class DeviceCompatibilityTests
         AssertExport("_CleanCardPrinterA@4", 4, false);
     }
 
+    private static void TestIceApiReadContracts()
+    {
+        AssertEqual(1u, LegacyIceApiContracts.PrinterModelInfoLevel, "printer model info level");
+        AssertEqual(2u, LegacyIceApiContracts.PrinterSerialInfoLevel, "printer serial info level");
+        AssertEqual(4u, LegacyIceApiContracts.MagstripeHeadInfoLevel, "magstripe head info level");
+        AssertEqual(1u, LegacyIceApiContracts.PrinterStatusLevel, "printer status info level");
+        AssertEqual(1u, LegacyIceApiContracts.PrinterErrorsLevel, "printer errors info level");
+
+        AssertEqual(12, LegacyIceApiContracts.PrinterModelInfoPrefixSize, "native model prefix size");
+        AssertEqual(32, LegacyIceApiContracts.PrinterSerialInfoPrefixSize, "native serial prefix size");
+        AssertEqual(28, LegacyIceApiContracts.MagstripeHeadInfoPrefixSize, "native magstripe prefix size");
+        AssertEqual(16, LegacyIceApiContracts.PrinterStatusRecordSize, "native status record size");
+        AssertEqual(16, LegacyIceApiContracts.PrinterErrorRecordSize, "native error record size");
+
+        AssertEqual(12, Marshal.SizeOf<LegacyIceCardId32>(), "x86 CARDIDTYPE size");
+        AssertEqual(8, Marshal.SizeOf<LegacyIceCardStatus1>(), "CARD_INFO_1 size");
+        AssertEqual(16, Marshal.SizeOf<LegacyIceSystemTime>(), "SYSTEMTIME size");
+        AssertEqual(24, Marshal.SizeOf<LegacyIceCardStatus2>(), "CARD_INFO_2 size");
+
+        AssertTrue(LegacyIceApiContracts.DecodePollingState(0) == LegacyIcePrinterPollingState.Responding,
+            "polling state 0 is responding");
+        AssertTrue(LegacyIceApiContracts.DecodePollingState(1) == LegacyIcePrinterPollingState.NotResponding,
+            "polling state 1 is not responding");
+        AssertTrue(LegacyIceApiContracts.DecodePollingState(2) == LegacyIcePrinterPollingState.Suspended,
+            "polling state 2 is suspended");
+        AssertTrue(LegacyIceApiContracts.DecodePollingState(3) is null, "unknown polling state remains unknown");
+
+        AssertEqual("not installed", LegacyIceApiContracts.DecodeMagstripeHeadType(0, 1, 1, 1),
+            "missing first magstripe presence flag");
+        AssertEqual("not installed", LegacyIceApiContracts.DecodeMagstripeHeadType(1, 0, 1, 1),
+            "missing second magstripe presence flag");
+        AssertEqual("not enabled", LegacyIceApiContracts.DecodeMagstripeHeadType(1, 1, 0, 1),
+            "disabled magstripe head");
+        AssertEqual("IAT", LegacyIceApiContracts.DecodeMagstripeHeadType(1, 1, 1, 1),
+            "magstripe head type 1");
+        AssertEqual("NTT", LegacyIceApiContracts.DecodeMagstripeHeadType(1, 1, 1, 2),
+            "magstripe head type 2");
+        AssertEqual("Unknown", LegacyIceApiContracts.DecodeMagstripeHeadType(1, 1, 1, 9),
+            "unknown magstripe head type");
+    }
+
     private static void TestIceApiProbeFallback()
     {
         var temp = CreateTempDirectory();
@@ -83,6 +127,26 @@ internal static class DeviceCompatibilityTests
                 AssertEqual(LegacyIceApiAvailability.Requires32BitProcess, result.Availability, "legacy x86 ICE API process guard");
             else
                 AssertEqual(LegacyIceApiAvailability.Missing, result.Availability, "missing local ICE API probe");
+        }
+        finally { TryDelete(temp); }
+    }
+
+    private static void TestIceApiReaderFallback()
+    {
+        var temp = CreateTempDirectory();
+        try
+        {
+            var result = LegacyIceApiReader.ReadPrinter("Test Printer", temp, allowSystemSearch: false);
+            if (!OperatingSystem.IsWindows())
+                AssertEqual(LegacyIceApiAvailability.NotWindows, result.Availability, "non-Windows read-only ICE API reader");
+            else if (IntPtr.Size != 4)
+                AssertEqual(LegacyIceApiAvailability.Requires32BitProcess, result.Availability, "read-only ICE API reader x86 guard");
+            else
+                AssertEqual(LegacyIceApiAvailability.Missing, result.Availability, "read-only ICE API reader missing-DLL fallback");
+
+            AssertEqual("Test Printer", result.PrinterName, "read-only ICE API reader preserves printer name");
+            AssertTrue(result.ModelName is null && result.SerialNumber is null && result.ActiveJobId is null,
+                "reader fallback does not invent printer data");
         }
         finally { TryDelete(temp); }
     }

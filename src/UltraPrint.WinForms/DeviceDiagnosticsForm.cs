@@ -10,19 +10,20 @@ internal sealed class DeviceDiagnosticsForm : Form
     private readonly StartupPaths _paths = StartupPaths.FromBaseDirectory(AppContext.BaseDirectory);
     private readonly ComboBox _currentDevice = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
     private readonly Label _configPath = new() { AutoSize = true };
-    private readonly Label _iceStatus = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
+    private readonly Label _iceStatus = new() { AutoSize = true, MaximumSize = new Size(920, 0) };
     private readonly Label _architecture = new() { AutoSize = true };
     private readonly DataGridView _profiles = Grid();
     private readonly DataGridView _modules = Grid();
+    private readonly DataGridView _runtime = Grid();
     private readonly ListBox _exports = new() { Dock = DockStyle.Fill, IntegralHeight = false, Font = new Font("Consolas", 9) };
     private LegacyDeviceConfiguration _configuration = new(null, Array.Empty<LegacyHardwareModuleDefinition>(), Array.Empty<LegacyDeviceProfile>());
 
     public DeviceDiagnosticsForm()
     {
         Text = "UltraPrint printer / device diagnostics";
-        Width = 1080;
-        Height = 720;
-        MinimumSize = new Size(820, 560);
+        Width = 1120;
+        Height = 820;
+        MinimumSize = new Size(860, 640);
         StartPosition = FormStartPosition.CenterParent;
 
         Controls.Add(BuildUi());
@@ -36,18 +37,20 @@ internal sealed class DeviceDiagnosticsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             Padding = new Padding(8)
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 205));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
 
         var header = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
         header.Controls.Add(new Label { AutoSize = true, Text = "Current device:", Margin = new Padding(3, 9, 3, 0) });
         header.Controls.Add(_currentDevice);
         header.Controls.Add(Button("Set current", (_, _) => SaveCurrentDevice()));
         header.Controls.Add(Button("Refresh", (_, _) => RefreshState()));
+        header.Controls.Add(Button("Read ICE status", (_, _) => ReadIceStatus()));
         header.Controls.Add(new Label { AutoSize = true, Text = "   " });
         header.Controls.Add(_architecture);
         var headerStack = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 3 };
@@ -56,7 +59,7 @@ internal sealed class DeviceDiagnosticsForm : Form
         headerStack.Controls.Add(_iceStatus, 0, 2);
         root.Controls.Add(headerStack, 0, 0);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 570 };
+        var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 590 };
         var profilePanel = new Panel { Dock = DockStyle.Fill };
         profilePanel.Controls.Add(_profiles);
         profilePanel.Controls.Add(new Label { Dock = DockStyle.Top, Height = 26, Text = "  Legacy device profiles", TextAlign = ContentAlignment.MiddleLeft });
@@ -67,16 +70,27 @@ internal sealed class DeviceDiagnosticsForm : Form
         split.Panel2.Controls.Add(modulePanel);
         root.Controls.Add(split, 0, 1);
 
+        var runtimePanel = new Panel { Dock = DockStyle.Fill };
+        runtimePanel.Controls.Add(_runtime);
+        runtimePanel.Controls.Add(new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 28,
+            Text = "  Read-only ICE printer state (errors are not cleared; polling is not changed)",
+            TextAlign = ContentAlignment.MiddleLeft
+        });
+        root.Controls.Add(runtimePanel, 0, 2);
+
         var exportsPanel = new Panel { Dock = DockStyle.Fill };
         exportsPanel.Controls.Add(_exports);
         exportsPanel.Controls.Add(new Label
         {
             Dock = DockStyle.Top,
             Height = 26,
-            Text = "  Recovered ICE_API.DLL x86 exports (inspection only; destructive calls are not invoked)",
+            Text = "  Recovered ICE_API.DLL x86 exports (destructive calls are not invoked)",
             TextAlign = ContentAlignment.MiddleLeft
         });
-        root.Controls.Add(exportsPanel, 0, 2);
+        root.Controls.Add(exportsPanel, 0, 3);
         return root;
     }
 
@@ -122,10 +136,66 @@ internal sealed class DeviceDiagnosticsForm : Form
             _exports.Items.Add($"{export.NativeName,-38} stack={export.StackBytes,2}  {(export.ReadOnlyQuery ? "query" : "action")}");
         _exports.EndUpdate();
 
+        ClearRuntime();
         var probe = LegacyIceApiProbe.Probe(_paths.BaseDirectory);
         _iceStatus.Text = "ICE_API: " + probe.Message;
         RefreshSelectedProfile();
     }
+
+    private void ReadIceStatus()
+    {
+        if (_currentDevice.SelectedItem is not string device || string.IsNullOrWhiteSpace(device))
+        {
+            MessageBox.Show(this, "Select a printer/device first.", "ICE_API diagnostics", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        UseWaitCursor = true;
+        try
+        {
+            var snapshot = LegacyIceApiReader.ReadPrinter(device, _paths.BaseDirectory);
+            _iceStatus.Text = "ICE_API: " + snapshot.Message;
+            ClearRuntime();
+            AddRuntime("Printer", snapshot.PrinterName);
+            AddRuntime("Availability", snapshot.Availability.ToString());
+            AddRuntime("API version", snapshot.ApiVersion ?? "<unavailable>");
+            AddRuntime("Polling", FormatPolling(snapshot.PollingState));
+            AddRuntime("Model", snapshot.ModelName ?? "<unavailable>");
+            AddRuntime("Serial", snapshot.SerialNumber ?? "<unavailable>");
+            AddRuntime("Magstripe head", snapshot.MagstripeHeadType ?? "<unavailable>");
+            AddRuntime("Active job", snapshot.ActiveJobId?.ToString() ?? "<unavailable>");
+            AddRuntime("First error", snapshot.FirstError ?? (snapshot.Availability == LegacyIceApiAvailability.Available ? "No Errors" : "<unavailable>"));
+            AddRuntime("Warnings", snapshot.Warnings.Count == 0 ? "<none>" : string.Join(" | ", snapshot.Warnings));
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "ICE_API diagnostics", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private void ClearRuntime()
+    {
+        _runtime.Columns.Clear();
+        _runtime.Rows.Clear();
+        _runtime.Columns.Add("Property", "Property");
+        _runtime.Columns.Add("Value", "Value");
+        _runtime.Columns[0].FillWeight = 25;
+        _runtime.Columns[1].FillWeight = 75;
+    }
+
+    private void AddRuntime(string property, string value) => _runtime.Rows.Add(property, value);
+
+    private static string FormatPolling(LegacyIcePrinterPollingState? state) => state switch
+    {
+        LegacyIcePrinterPollingState.Responding => "PRINTER IS RESPONDING",
+        LegacyIcePrinterPollingState.NotResponding => "PRINTER IS NOT RESPONDING",
+        LegacyIcePrinterPollingState.Suspended => "PRINTER IS SUSPENDED",
+        _ => "<unavailable/unknown>"
+    };
 
     private void RefreshSelectedProfile()
     {
