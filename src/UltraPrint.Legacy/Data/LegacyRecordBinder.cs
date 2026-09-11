@@ -6,8 +6,9 @@ namespace UltraPrint.Legacy.Data;
 
 /// <summary>
 /// Managed replacement for the recovered Record2Card / RecordToReport binding path.
-/// Explicit Campo bindings win. As a compatibility fallback a field named %COLUMN%
-/// is also resolved when the current record really contains COLUMN.
+/// Native DataField metadata embedded in each .ly field record wins, followed by an explicit
+/// managed session override. As a compatibility fallback a field named %COLUMN% is also resolved
+/// when the current record really contains COLUMN.
 /// </summary>
 public static class LegacyRecordBinder
 {
@@ -54,17 +55,23 @@ public static class LegacyRecordBinder
             switch (field.Kind)
             {
                 case LayoutFieldKind.Text:
-                    if (TryResolve(record, sessionBinding ?? field.Text.DatabaseField, field.Name, out var textValue))
-                        field.Text.Content = ToDisplayString(textValue);
+                    if (TryResolveFieldValue(record, field, sessionBinding, out var textValue))
+                        field.Text.Content = textValue;
                     break;
 
                 case LayoutFieldKind.Image:
-                    if (TryResolve(record, sessionBinding ?? field.Image.DatabaseField, field.Name, out var imageValue))
+                    if (TryResolveFieldValue(record, field, sessionBinding, out var imageValue))
                     {
-                        var value = ToDisplayString(imageValue);
-                        if (!string.IsNullOrWhiteSpace(value))
-                            field.Image.File = ResolvePhotoPath(source, value, field.Image.DefaultExtension) ?? value;
+                        if (!string.IsNullOrWhiteSpace(imageValue))
+                            field.Image.File = ResolvePhotoPath(source, imageValue, field.Image.DefaultExtension) ?? imageValue;
+                        else
+                            field.Image.File = string.Empty;
                     }
+                    break;
+
+                case LayoutFieldKind.Barcode:
+                    if (TryResolveFieldValue(record, field, sessionBinding, out var barcodeValue))
+                        field.LegacyPayload = barcodeValue;
                     break;
             }
             clone.Fields.Add(field);
@@ -98,6 +105,46 @@ public static class LegacyRecordBinder
             _ => Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty
         };
     }
+
+    private static bool TryResolveFieldValue(
+        IReadOnlyDictionary<string, object?> record,
+        LayoutField field,
+        string? sessionBinding,
+        out string value)
+    {
+        // The Database / Records workspace override is an explicit current-session choice and
+        // therefore intentionally wins over persisted legacy metadata.
+        if (!string.IsNullOrWhiteSpace(sessionBinding))
+            return LegacyNativeDataFieldSemantics.TryResolve(record, sessionBinding, out value);
+
+        // frmCarta.Record2Card reads the fixed DataField String * 28 directly from the field UDT.
+        // Reading from the preserved 264-byte raw template avoids inventing a new .ly model offset.
+        var nativeDataField = LegacyNativeDataFieldSemantics.ReadDataField(field);
+        if (!string.IsNullOrWhiteSpace(nativeDataField))
+            return LegacyNativeDataFieldSemantics.TryResolve(record, nativeDataField, out value);
+
+        // Older managed builds copied %COLUMN% field names into Text/Image.DatabaseField as a
+        // convenience. Do not mistake that inferred value for a persisted native DataField.
+        var modelBinding = field.Kind == LayoutFieldKind.Image
+            ? field.Image.DatabaseField
+            : field.Text.DatabaseField;
+        if (!string.IsNullOrWhiteSpace(modelBinding) && !IsInferredPlaceholderBinding(field, modelBinding))
+            return LegacyNativeDataFieldSemantics.TryResolve(record, modelBinding, out value);
+
+        if (TryResolve(record, explicitBinding: null, field.Name, out var fallback))
+        {
+            value = ToDisplayString(fallback);
+            return true;
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    private static bool IsInferredPlaceholderBinding(LayoutField field, string binding) =>
+        field.Name.Length >= 3 &&
+        field.Name[0] == '%' && field.Name[^1] == '%' &&
+        string.Equals(field.Name, binding, StringComparison.Ordinal);
 
     private static IEnumerable<string> BindingCandidates(string? explicitBinding, string? fieldName)
     {
