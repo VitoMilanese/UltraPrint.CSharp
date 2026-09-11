@@ -51,6 +51,8 @@ Implemented database/record workflow:
 - Per-record Front/Back/All card preview.
 - Print/preview the current database record.
 - Preview/print all loaded records using the same physical-size card renderer.
+- Direct **Print all** now reproduces the separate native `frmPrinting` shell: `Inizia` starts the batch, `Annulla` raises cooperative cancellation, and live card/side/countdown state remains responsive through the VB6-style message pump.
+- Recovered `UP.ini [Setup] Intervallo`: native load default is `5`; layouts with decoded legacy type-10 `SmartCara`/Chip fields (`frmCarta.HasChip`) normalize the interval to at least 30 seconds and wait only **between cards**. Non-chip layouts receive no interval delay.
 - CSV/text fallback parser works without an OLE DB text driver and preserves quoted delimiters.
 - Database path, SQL, selected table and newly created managed bindings are persisted beside the layout in `.ly.data.json` until the exact legacy `.ly` database/binding byte offsets are verified.
 
@@ -113,7 +115,7 @@ Implemented scripting compatibility foundation:
 
 This scripting layer remains intentionally partial. The main remaining compatibility gap is the callable member surface behind `Carta`, `Mainform`, database/table, sequence/print and device objects, plus production-safe automatic layout lifecycle integration and exact error-438 editor remapping. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md) and [`docs/SCRIPT_OBJECT_MODEL.md`](docs/SCRIPT_OBJECT_MODEL.md).
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex validation, the separate database-batch `frmPrinting` `Inizia`/`Annulla`/`Intervallo` shell, device-specific print status/cancel, device profiles, card-printer APIs, magnetic stripe, smart-card/chip and remaining options/job workflows.
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex/chip-timing validation, device-specific print status/cancel, device profiles, card-printer APIs, magnetic stripe, smart-card/chip execution and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -139,7 +141,7 @@ dotnet run --project tests/UltraPrint.CompatibilityTests/UltraPrint.Compatibilit
 4. Click a field to edit it in **Properties**, or drag/resize it directly on the card.
 5. Use **Database -> Database / Records...** to open an `.mdb`, `.ffm`, `.dbf`, `.xls/.xlsx`, `.csv`, `.txt` or `.dat` source.
 6. Open a table or run SQL, bind card fields to database columns, and navigate records while watching the card preview update.
-7. Print/preview the current record or all loaded records.
+7. Use **Print all** for direct database batch output: after choosing the Windows printer, the recovered `frmPrinting` shell waits for **Inizia** and offers **Annulla**. Chip layouts apply the persisted inter-card countdown; non-chip layouts do not.
 8. Use **Sequence -> Sequence / Sheet printing...** to arrange records or template copies on sheets; choose legacy sheet format, Horizontal/Vertical fill, Taglio cut-and-stack mode, Portrait/Landscape orientation and front/back mirror/offset settings. During direct printing use **Pause/Resume**; **Stop** on Print all finishes the current logical sheet before ending the job.
 9. Use **Security** to open/create `Operatori.FFM`, log in, manage operators and change passwords.
 10. Use **Tools -> Legacy VBScript...** to inspect/discover legacy `.vbs` files. Execution requires explicit per-session opt-in and the legacy Script Control to be registered; interactive legacy macros use the managed prompt/file/folder/computer dialogs.
@@ -158,4 +160,4 @@ dotnet run --project tools/UltraPrint.RecoveryCli -- startup-plan "C:\Program Fi
 
 Only behavior proven from binary metadata/native flow or real legacy data is treated as a confirmed compatibility contract. Unknown `.ly` bytes remain preserved rather than guessed. A workflow is marked complete only when it actually works against legacy inputs; placeholder menu items do not count.
 
-See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md` and `docs/SEQUENCE_COMPATIBILITY.md` for the recovered structures and confidence level.
+See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md`, `docs/SEQUENCE_COMPATIBILITY.md` and `reverse-engineering/BATCH_PRINTING_NATIVE.md` for the recovered structures and confidence level.

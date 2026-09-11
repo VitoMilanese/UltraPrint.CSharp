@@ -57,10 +57,11 @@ Its controls include `txtIntervallo`, `lblAncora`, `Command1`, labels/picture an
 
 Recovered behavior:
 
-- `Form_Load` clears the shared MainForm cooperative-cancel flag and loads `[Setup] Intervallo` through the legacy File/INI helper;
+- `Form_Load` clears the shared MainForm cooperative-cancel flag and loads `[Setup] Intervallo` with native default `5`;
 - `Command1` toggles from `Inizia` to `Annulla`; pressing it again sets the shared MainForm cancel flag and disables the button;
-- `Form_Unload` writes the current `Intervallo` value back to `[Setup]`;
+- `Form_Unload` writes the current `Intervallo` value back to `[Setup]` in `UP.ini`;
 - `frmDatabase.StampaTutti` shows this shell and pumps events until `Inizia` has been pressed;
-- its interval/countdown path normalizes values below 30 to `30` and pumps events during the wait.
+- its interval/countdown path is gated by `frmCarta.HasChip` at vtable `+0x79C`;
+- when `HasChip` is true, values below 30 are replaced with `30` before the cooperative inter-card countdown; non-chip layouts skip that wait.
 
-The interval delay is guarded by a still-unidentified boolean member on `frmCarta` at vtable offset `+0x79C`. Until that member is identified, the managed database batch path must **not** apply a blanket 30-second delay and call it native parity. The `frmPrinting` start/cancel/interval shell therefore remains a separate follow-up block.
+The formerly unidentified `+0x79C` gate is now recovered and the managed database Print All path implements this separate shell. See `BATCH_PRINTING_NATIVE.md` for the receiver/member correlation, type-10 SmartCara mapping, interval persistence and cancellation details.
