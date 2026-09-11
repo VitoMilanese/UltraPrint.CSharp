@@ -1,5 +1,6 @@
 using System.Drawing.Drawing2D;
 using UltraPrint.Core.Models;
+using UltraPrint.Legacy.Devices;
 using UltraPrint.Legacy.Layout;
 
 namespace UltraPrint.WinForms;
@@ -16,6 +17,7 @@ public sealed class LayoutCanvas : Control
     private DragMode _dragMode;
     private Point _lastMouse;
     private bool _showGrid = true;
+    private bool _showMagneticStripePosition;
     private bool _snapToGrid;
     private bool _previewMode;
     private double _gridSizeMm = 1.0;
@@ -74,6 +76,21 @@ public sealed class LayoutCanvas : Control
         {
             if (_showGrid == value) return;
             _showGrid = value;
+            Invalidate();
+        }
+    }
+
+    /// <summary>
+    /// Shows the recovered frmCarta magnetic-stripe position marker in editor mode only.
+    /// RenderTo() always disables editor overlays, so this state can never affect printing.
+    /// </summary>
+    public bool ShowMagneticStripePosition
+    {
+        get => _showMagneticStripePosition;
+        set
+        {
+            if (_showMagneticStripePosition == value) return;
+            _showMagneticStripePosition = value;
             Invalidate();
         }
     }
@@ -167,7 +184,9 @@ public sealed class LayoutCanvas : Control
         Focus();
 
         var (card, scale) = GetCardGeometry();
-        if (_selectedField is not null && IsVisibleOnSide(_selectedField, _side))
+        if (_selectedField is not null &&
+            _selectedField.Kind != LayoutFieldKind.MagneticStripe &&
+            IsVisibleOnSide(_selectedField, _side))
         {
             var selectedRect = FieldRectangle(_selectedField, card, scale);
             var handle = HitTestHandle(selectedRect, e.Location);
@@ -182,6 +201,7 @@ public sealed class LayoutCanvas : Control
         }
 
         var hit = FieldsForSide(_side)
+            .Where(field => field.Kind != LayoutFieldKind.MagneticStripe)
             .OrderByDescending(x => x.Level)
             .ThenByDescending(x => x.Index)
             .FirstOrDefault(field => FieldRectangle(field, card, scale).Contains(e.Location));
@@ -230,7 +250,7 @@ public sealed class LayoutCanvas : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (_previewMode || _selectedField is null) return;
+        if (_previewMode || _selectedField is null || _selectedField.Kind == LayoutFieldKind.MagneticStripe) return;
 
         var step = e.Control ? 0.01 : e.Shift ? 1.0 : 0.1;
         var changed = true;
@@ -284,9 +304,15 @@ public sealed class LayoutCanvas : Control
         foreach (var field in FieldsForSide(side).OrderBy(x => x.Level).ThenBy(x => x.Index))
             DrawField(graphics, field, card, scale);
 
+        if (editorOverlays && _showMagneticStripePosition)
+            DrawMagneticStripePosition(graphics, card, scale);
+
         graphics.DrawRectangle(Pens.DimGray, card.X, card.Y, card.Width, card.Height);
 
-        if (editorOverlays && _selectedField is not null && IsVisibleOnSide(_selectedField, side))
+        if (editorOverlays &&
+            _selectedField is not null &&
+            _selectedField.Kind != LayoutFieldKind.MagneticStripe &&
+            IsVisibleOnSide(_selectedField, side))
         {
             var rect = FieldRectangle(_selectedField, card, scale);
             using var pen = new Pen(Color.DodgerBlue, 2) { DashStyle = DashStyle.Dash };
@@ -357,8 +383,29 @@ public sealed class LayoutCanvas : Control
         }
     }
 
+    private static void DrawMagneticStripePosition(Graphics graphics, RectangleF card, float scale)
+    {
+        var bounds = LegacyMagneticStripePositionSemantics.GetLogicalBounds(card.Width / scale);
+        var rect = new RectangleF(
+            card.Left + (float)(bounds.LeftMm * scale),
+            card.Top + (float)(bounds.TopMm * scale),
+            (float)(bounds.WidthMm * scale),
+            (float)(bounds.HeightMm * scale));
+
+        // Geometry/display state are recovered exactly. The original design-time fill color has
+        // not been proven, so this is intentionally only a managed diagnostic visualization.
+        using var fill = new SolidBrush(Color.FromArgb(70, Color.Black));
+        using var pen = new Pen(Color.DimGray, 1) { DashStyle = DashStyle.Dash };
+        graphics.FillRectangle(fill, rect);
+        graphics.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+    }
+
     private void DrawField(Graphics graphics, LayoutField field, RectangleF card, float scale)
     {
+        // Legacy type 9 is represented by frmCarta's separate fixed-position band marker rather
+        // than printable field content. Do not emit it through editor/print field rendering.
+        if (field.Kind == LayoutFieldKind.MagneticStripe) return;
+
         var rect = FieldRectangle(field, card, scale);
         if (field.Appearance.Opaque)
         {
@@ -578,7 +625,9 @@ public sealed class LayoutCanvas : Control
 
     private Cursor HitTestCursor(Point point)
     {
-        if (_selectedField is not null && IsVisibleOnSide(_selectedField, _side))
+        if (_selectedField is not null &&
+            _selectedField.Kind != LayoutFieldKind.MagneticStripe &&
+            IsVisibleOnSide(_selectedField, _side))
         {
             var (card, scale) = GetCardGeometry();
             var rect = FieldRectangle(_selectedField, card, scale);

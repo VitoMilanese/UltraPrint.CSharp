@@ -7,21 +7,44 @@ namespace UltraPrint.WinForms;
 
 internal static class MagneticStripeIntegration
 {
-    private const string MenuItemName = "managedMagneticStripeTracksMenuItem";
+    private const string TracksMenuItemName = "managedMagneticStripeTracksMenuItem";
+    private const string PositionMenuItemName = "managedMagneticStripePositionMenuItem";
 
     public static void Attach(MainForm form)
     {
         ArgumentNullException.ThrowIfNull(form);
-        var tools = form.MainMenuStrip?.Items.OfType<ToolStripMenuItem>()
-            .FirstOrDefault(item => string.Equals(item.Text, "Tools", StringComparison.OrdinalIgnoreCase));
-        if (tools is null || tools.DropDownItems.OfType<ToolStripItem>().Any(item => item.Name == MenuItemName))
-            return;
+        var menu = form.MainMenuStrip;
+        if (menu is null) return;
 
-        tools.DropDownItems.Add(new ToolStripSeparator());
-        tools.DropDownItems.Add(new ToolStripMenuItem("Magnetic Stripe Tracks...", null, (_, _) => EditTracks(form))
+        var tools = menu.Items.OfType<ToolStripMenuItem>()
+            .FirstOrDefault(item => string.Equals(item.Text, "Tools", StringComparison.OrdinalIgnoreCase));
+        if (tools is not null && !tools.DropDownItems.OfType<ToolStripItem>().Any(item => item.Name == TracksMenuItemName))
         {
-            Name = MenuItemName
-        });
+            tools.DropDownItems.Add(new ToolStripSeparator());
+            tools.DropDownItems.Add(new ToolStripMenuItem("Magnetic Stripe Tracks...", null, (_, _) => EditTracks(form))
+            {
+                Name = TracksMenuItemName
+            });
+        }
+
+        var view = menu.Items.OfType<ToolStripMenuItem>()
+            .FirstOrDefault(item => string.Equals(item.Text, "View", StringComparison.OrdinalIgnoreCase));
+        if (view is not null && !view.DropDownItems.OfType<ToolStripItem>().Any(item => item.Name == PositionMenuItemName))
+        {
+            var canvas = FindControl<LayoutCanvas>(form);
+            var position = new ToolStripMenuItem("Magnetic stripe position")
+            {
+                Name = PositionMenuItemName,
+                CheckOnClick = true,
+                Checked = false
+            };
+            position.CheckedChanged += (_, _) =>
+            {
+                if (canvas is not null)
+                    canvas.ShowMagneticStripePosition = position.Checked;
+            };
+            view.DropDownItems.Add(position);
+        }
     }
 
     private static void EditTracks(MainForm owner)
