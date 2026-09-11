@@ -109,7 +109,34 @@ Recovered levels/record prefixes are:
 
 The native `GetPrinterError` button reads `_GetCardPrinterErrorsA@24` and then calls `_ClearAllCardErrorsA@4`. The managed **Read ICE status** command intentionally stops after the read, so inspecting errors cannot clear the printer's error queue.
 
-A surviving public ICE API declaration independently confirms the x86 card-status ABI used by later `PrintWithCardStatus` work: packed `CARDIDTYPE` is 12 bytes (`DWORD JobId`, `DWORD CardNum`, `HANDLE hPrinter`), `CARD_INFO_1` is two `BOOL`s (8 bytes), `CARD_INFO_2` is two `DWORD`s plus `SYSTEMTIME` (24 bytes), `GetCardId(HDC, LPCARDIDTYPE)` takes 8 stack bytes, and `GetCardStatus(CARDIDTYPE by value, DWORD level, LPBYTE, DWORD, LPDWORD)` takes 28. The managed types are data-only in this slice; those card/job calls are not invoked yet.
+A surviving public ICE API declaration independently confirms the x86 card-status ABI: packed `CARDIDTYPE` is 12 bytes (`DWORD JobId`, `DWORD CardNum`, `HANDLE hPrinter`), `CARD_INFO_1` is two `BOOL`s (8 bytes), `CARD_INFO_2` is two `DWORD`s plus `SYSTEMTIME` (24 bytes), `GetCardId(HDC, LPCARDIDTYPE)` takes 8 stack bytes, and `GetCardStatus(CARDIDTYPE by value, DWORD level, LPBYTE, DWORD, LPDWORD)` takes 28.
+
+## `PrintWithCardStatus` card-job lifecycle
+
+`PrintWithCardStatus_Event0` (`0x00512820`) delegates to native helper `0x00623650`. Its recovered card-job sequence is:
+
+1. Obtain the current VB6 `Printer.hDC` through DISPID `0x10009`.
+2. Call `_GetCardId@8(hDC, &CARDIDTYPE)`. A zero return takes the native `GetCardId failed` path.
+3. The sample surfaces `Job #<JobId>, Card #<CardNum>`, then finishes the GDI print job.
+4. Call helper `0x00623C10` with the 12-byte `CARDIDTYPE`.
+5. That helper calls `_GetCardStatus@28(CARDIDTYPE by value, level=1, &CARD_INFO_1, 8, &needed)` at most **60 times**.
+6. A FALSE API return is retried. A TRUE return with `CARD_INFO_1.Active != 0` is also retried.
+7. The first TRUE return with `Active == 0` ends the loop and returns VB True only when `CARD_INFO_1.Success != 0`.
+8. If all 60 calls fail or remain active, the helper returns VB False.
+
+There is no `Sleep`/timer in `0x00623C10`; the 60 calls are immediate. Any blocking/wait performed inside the vendor DLL is external to UltraPrint. `LegacyIceCardJobSemantics` reproduces this bounded retry contract, while `LegacyIceCardJobMonitor` exposes the exact read-only `GetCardId -> GetCardStatus` flow for a caller that already owns the live printer HDC. It does not create a print job itself.
+
+## `smartDriver.StampaRecord` mutation boundary
+
+`smartDriver.StampaRecord` (`0x00512D20`) is a separate production print path from the `PrintWithCardStatus` sample. It directly performs printer-mutating ICE calls, so they remain disabled in managed code until their surrounding layout/module conditions are fully recovered and hardware-tested. Direct call-site evidence currently proves:
+
+- `0x00513587`: `_SetInteractiveMode@8(hDC, TRUE)`; a zero return goes to the native `La stampante non accetta il modo Interactive` error path.
+- `0x00513C75`: a conditional `_RotateCardSide@8(hDC, TRUE)` after the method's single explicit Variant argument compares equal to VB True. The semantic name of that argument is not yet claimed.
+- `0x00513D15`: `_FeedCard@8(hDC, 0x11)`; the semantic name of raw value `0x11` is not guessed.
+- `0x0051401D`, `0x00514529`, `0x00514FC1`: `_SmartCardContinue@8` with raw second arguments `1`, `0`, `1` respectively on different branches.
+- `0x00515541`: cleanup calls `_SetInteractiveMode@8(hDC, FALSE)` after clearing the two transient smartDriver flags at `0x0062B680` / `0x0062B682`.
+
+The recovered 24-export ICE surface contains **no card-job cancel export**, and neither the recovered `PrintWithCardStatus` poller nor `smartDriver.StampaRecord` calls `_GetCardStatus` as a cancellation mechanism. No `AbortDoc`, `KillDoc`, `CancelDC` or equivalent native cancellation contract has been proven in these paths. Therefore managed cancellation must remain the already-restored cooperative application-level cancellation until a real device/driver cancellation contract is recovered; this slice deliberately does not invent one.
 
 ## `frmDispositivi` / Campo.ini configuration surface
 
@@ -148,6 +175,7 @@ The first managed hardware slice intentionally stops before sending real printer
 - `LegacyDeviceConfigurationStore` restores the proven frmDispositivi profile/current-device configuration surface.
 - `LegacyIceApiProbe` catalogs all 24 recovered exports, refuses to load the x86 ABI from a 64-bit process, validates exports when an x86 vendor DLL is available, and calls only the side-effect-free major/minor version functions.
 - `LegacyIceApiReader` adds explicit read-only polling/model/serial/magnetic-head/active-job/first-error queries using the recovered two-pass buffer contracts. Each query is isolated so a vendor failure becomes a diagnostic warning rather than silently enabling another hardware action.
+- `LegacyIceCardJobMonitor` adds the proven `GetCardId -> GetCardStatus(level 1)` lifecycle for an already-created printer job, including the native maximum of 60 immediate status calls. It never feeds/rotates/submits/cancels a card.
 - **Devices -> Printer / Device diagnostics...** exposes configured profiles, enabled modules, installed Windows printers, the current device and ICE_API compatibility state. **Read ICE status** is explicit; refreshing the form does not contact the printer for status/info beyond the existing API-version probe.
 
 This preserves a hard boundary around printer mutation: diagnostics never clear errors, resume/suspend polling, clean/update firmware, feed a card, encode magnetic data, initialize a smart card or submit a print job.
