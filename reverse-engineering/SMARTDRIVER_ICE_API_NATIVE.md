@@ -179,3 +179,44 @@ The first managed hardware slice intentionally stops before sending real printer
 - **Devices -> Printer / Device diagnostics...** exposes configured profiles, enabled modules, installed Windows printers, the current device and ICE_API compatibility state. **Read ICE status** is explicit; refreshing the form does not contact the printer for status/info beyond the existing API-version probe.
 
 This preserves a hard boundary around printer mutation: diagnostics never clear errors, resume/suspend polling, clean/update firmware, feed a card, encode magnetic data, initialize a smart card or submit a print job.
+
+## `MainForm.PrinterEscape` is raw PASSTHROUGH, not cancellation
+
+`MainForm.PrinterEscape` (`0x005B9150`) has two explicit arguments plus a Variant return. This build never reads the first explicit argument. It reads the second argument as a BSTR, takes its length, obtains `Printer.hDC` through DISPID `0x10009`, builds a legacy byte/string frame through VB `Chr()` plus Variant concatenation, and calls the dynamically imported GDI `Escape` routine with hard-coded escape code `0x13` (decimal **19**, `PASSTHROUGH`). The GDI return value is wrapped as a VB `Long` Variant.
+
+After the `Escape` call, the routine invokes VB Printer DISPID `0x20000`. The same DISPID is used at the native document-closing points in `PrintWithCardStatus`, `MainForm.StampaRecord` and Sequenza, so this is the current-document `Printer.EndDoc` operation. `PrinterEscape` therefore sends a low-level passthrough payload and then closes the VB Printer document; it is **not** a device/job cancel path.
+
+The exact byte ordering of the legacy `Chr(0)`, `Chr(Len(payload))`, payload BSTR and embedded-NUL framing is not yet claimed. Managed code records the proven contract but deliberately does not emit PASSTHROUGH data until that framing is closed and tested on supported hardware.
+
+## `smartDriver.StampaRecord` recovered preamble and gates
+
+`smartDriver.StampaRecord` (`0x00512D20`) has one Optional Variant argument. Native `rtcIsMissing` handling defaults a missing argument to VB `False`. The source-level parameter name is not recovered, so the managed compatibility model calls it only the **optional gate**.
+
+When the optional gate is `True`, native code first enters the magnetic-stripe preparation branch (`0x00603FC0`, `Traccia1/2/3`, `EncodeMagStripeWithApi`) and, on the successful close path, pairs raw `EndPage` / `EndDoc` with script hooks `EndPage` / `EndDoc`. The same gate is tested again immediately before `_RotateCardSide@8(hDC, TRUE)`. No semantic label such as front/back is assigned to this argument without stronger evidence.
+
+The first production card-job preamble is now proven in this order:
+
+1. `_SetInteractiveMode@8(hDC, TRUE)`; failure takes the embedded `La stampante non accetta il modo Interactive` path.
+2. `frmCarta.InteractiveMode = True` through its recovered setter at `+0x7B8`.
+3. Win32 `StartDocA` on the VB Printer HDC.
+4. `Funzioni.Vbscript("StartDoc", ...)`.
+5. Win32 `StartPage`.
+6. `Funzioni.Vbscript("StartPage", ...)`.
+7. If the Optional Variant gate is `True`, `_RotateCardSide@8(hDC, TRUE)`.
+8. `_FeedCard@8(hDC, 0x11)`; `0x11` remains a raw native value rather than a guessed enum name.
+9. `Funzioni.Vbscript("EncodeChip", ...)`.
+10. Later smart-card branches call `_SmartCardContinue@8` with raw second arguments `1`, `0`, `1` at `0x0051401D`, `0x00514529`, `0x00514FC1` respectively, interleaved with conditional `EndPage`/`EndDoc` and their script hooks.
+11. `frmCarta.HasRear` (`+0x794`) gates the later rear-side continuation. If no rear side exists, native flow goes to cleanup.
+12. Cleanup clears both transient smartDriver flags (`0x0062B680`, `0x0062B682`), calls `_SetInteractiveMode@8(hDC, FALSE)`, and writes `frmCarta.InteractiveMode = False`.
+
+This closes the high-confidence orchestration envelope without guessing the semantic names of the two transient flags, the Optional Variant parameter, raw feed/continue numeric values, or branch meanings that depend on real printer/module behavior.
+
+## Cancellation search result
+
+The recovered 24-export `ICE_API.DLL` surface contains no cancel-card or cancel-job export. The production `smartDriver.StampaRecord` path does not call `GetCardStatus` as a cancellation operation. `MainForm.PrinterEscape` is `PASSTHROUGH + EndDoc`, not abort. Searches of the recovered standard-print, card-status and smartDriver paths also found no `AbortDoc`, `KillDoc` or `CancelDC` contract.
+
+Consequently the C# replacement continues to use the already-restored application-level cooperative cancellation for batch/sequence workflows. A device-level abort will only be added if a separate driver contract, escape command, vendor runtime or real-printer trace proves one.
+
+## Managed semantic guard
+
+`LegacySmartDriverPrintSemantics` and `LegacyPrinterEscapeContract` now encode the proven preamble, raw constants, `HasRear` gate, cleanup transition and absence of a proven device cancel path as **pure data/state semantics**. They intentionally execute no GDI `Escape`, no `StartDoc`/`FeedCard`, and no mutating ICE API export. This keeps future hardware work testable without silently activating a printer.
