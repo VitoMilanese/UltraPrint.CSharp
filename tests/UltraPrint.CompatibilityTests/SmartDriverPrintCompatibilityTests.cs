@@ -7,6 +7,7 @@ internal static class SmartDriverPrintCompatibilityTests
     internal static void Run()
     {
         TestPrinterEscapeContract();
+        TestPrinterEscapeFraming();
         TestSmartDriverPreambleWithoutOptionalGate();
         TestSmartDriverPreambleWithOptionalGate();
         TestRearAndCleanupSemantics();
@@ -22,7 +23,29 @@ internal static class SmartDriverPrintCompatibilityTests
         AssertTrue(LegacyPrinterEscapeContract.SecondArgumentIsPayload, "PrinterEscape second explicit argument is payload");
         AssertTrue(LegacyPrinterEscapeContract.EndsCurrentPrinterDocument, "PrinterEscape closes the current Printer document");
         AssertTrue(!LegacyPrinterEscapeContract.ManagedPassthroughEmissionEnabled,
-            "managed code does not emit unresolved raw PASSTHROUGH payloads");
+            "managed code does not emit PASSTHROUGH payloads before hardware validation");
+    }
+
+    private static void TestPrinterEscapeFraming()
+    {
+        AssertTrue(LegacyPrinterEscapeContract.PayloadFramingOrderRecovered,
+            "PrinterEscape Chr/Variant payload framing order is recovered");
+        AssertTrue(LegacyPrinterEscapeContract.EscapeOutputArgumentIsNullVariant,
+            "PrinterEscape fifth Escape argument is a VT_NULL Variant");
+        AssertSequence(
+            new[]
+            {
+                LegacyPrinterEscapeFramePartKind.LeadingNullCharacter,
+                LegacyPrinterEscapeFramePartKind.PayloadLengthCharacter,
+                LegacyPrinterEscapeFramePartKind.Payload,
+                LegacyPrinterEscapeFramePartKind.TrailingNullCharacter
+            },
+            LegacyPrinterEscapeContract.ProvenPayloadFrameParts,
+            "PrinterEscape frame is Chr(0) + Chr(Len(payload)) + payload + Chr(0)");
+        AssertEqual(3, LegacyPrinterEscapeContract.GetEscapeInputCount("ABC"),
+            "Escape cbInput uses Len(payload), not framed length");
+        AssertEqual(0, LegacyPrinterEscapeContract.GetEscapeInputCount(string.Empty),
+            "empty payload preserves native Len(payload) call shape");
     }
 
     private static void TestSmartDriverPreambleWithoutOptionalGate()

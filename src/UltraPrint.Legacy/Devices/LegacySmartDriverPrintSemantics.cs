@@ -3,8 +3,8 @@ namespace UltraPrint.Legacy.Devices;
 /// <summary>
 /// Data-only contract for MainForm.PrinterEscape recovered from UltraPrint 2.2.115.
 /// The native routine sends a raw GDI PASSTHROUGH command and then ends the current
-/// VB Printer document. The exact legacy payload framing is intentionally not emitted
-/// by managed code until its byte ordering is fully recovered and hardware-tested.
+/// VB Printer document. The exact VB6 Chr()/Variant frame ordering is recovered here,
+/// but managed code still does not emit PASSTHROUGH data to real printer hardware.
 /// </summary>
 public static class LegacyPrinterEscapeContract
 {
@@ -18,14 +18,55 @@ public static class LegacyPrinterEscapeContract
     /// <summary>The second explicit PrinterEscape argument is the payload string.</summary>
     public const bool SecondArgumentIsPayload = true;
 
+    /// <summary>
+    /// Native __vbaVarCat call ordering proves the complete frame expression:
+    /// Chr(0) &amp; Chr(Len(payload)) &amp; payload &amp; Chr(0).
+    /// </summary>
+    public const bool PayloadFramingOrderRecovered = true;
+
+    /// <summary>The fifth Escape argument is a VT_NULL Variant in the native call.</summary>
+    public const bool EscapeOutputArgumentIsNullVariant = true;
+
+    private static readonly LegacyPrinterEscapeFramePartKind[] PayloadFrameParts =
+    [
+        LegacyPrinterEscapeFramePartKind.LeadingNullCharacter,
+        LegacyPrinterEscapeFramePartKind.PayloadLengthCharacter,
+        LegacyPrinterEscapeFramePartKind.Payload,
+        LegacyPrinterEscapeFramePartKind.TrailingNullCharacter
+    ];
+
+    /// <summary>
+    /// Exact left-to-right VB6 Variant concatenation used to form lpInData before the
+    /// dynamically imported GDI Escape call.
+    /// </summary>
+    public static IReadOnlyList<LegacyPrinterEscapeFramePartKind> ProvenPayloadFrameParts => PayloadFrameParts;
+
+    /// <summary>
+    /// Native code passes Len(payload), not the framed-string length, as Escape.cbInput.
+    /// </summary>
+    public static int GetEscapeInputCount(string payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return payload.Length;
+    }
+
     /// <summary>The native routine closes the current VB Printer document after Escape.</summary>
     public const bool EndsCurrentPrinterDocument = true;
 
     /// <summary>
-    /// False on purpose: the native Chr()/Variant concatenation that frames the PASSTHROUGH
-    /// bytes is not yet reproduced, so this compatibility layer must not send printer data.
+    /// False on purpose. The frame ordering is recovered, but actual VB6 ANSI/DBCS
+    /// marshaling and the target printer/driver behavior have not been hardware-validated.
+    /// This compatibility layer therefore remains non-executing.
     /// </summary>
     public const bool ManagedPassthroughEmissionEnabled = false;
+}
+
+public enum LegacyPrinterEscapeFramePartKind
+{
+    LeadingNullCharacter,
+    PayloadLengthCharacter,
+    Payload,
+    TrailingNullCharacter
 }
 
 public enum LegacySmartDriverPrintStepKind

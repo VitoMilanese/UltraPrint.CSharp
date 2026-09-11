@@ -186,7 +186,24 @@ This preserves a hard boundary around printer mutation: diagnostics never clear 
 
 After the `Escape` call, the routine invokes VB Printer DISPID `0x20000`. The same DISPID is used at the native document-closing points in `PrintWithCardStatus`, `MainForm.StampaRecord` and Sequenza, so this is the current-document `Printer.EndDoc` operation. `PrinterEscape` therefore sends a low-level passthrough payload and then closes the VB Printer document; it is **not** a device/job cancel path.
 
-The exact byte ordering of the legacy `Chr(0)`, `Chr(Len(payload))`, payload BSTR and embedded-NUL framing is not yet claimed. Managed code records the proven contract but deliberately does not emit PASSTHROUGH data until that framing is closed and tested on supported hardware.
+The framing order is now recovered from the exact runtime call sequence. `rtcVarBstrFromAnsi` (the VB6 `Chr()` helper) is called at `0x005B928D` with `0` and at `0x005B9294` with `Len(payload)`. The three subsequent `__vbaVarCat` calls at `0x005B92DF`, `0x005B92ED` and `0x005B92FE`, together with OLE Automation `VarCat(left, right, result)` ordering, prove the left-to-right expression:
+
+```text
+Chr(0) & Chr(Len(payload)) & payload & Chr(0)
+```
+
+The final `Chr(0)` is represented by the one-character NUL BSTR at `0x00436E10` (its BSTR byte-length prefix is `2`, so it is not an empty string). Immediately before the dynamic `Escape` thunk at `0x00428114`, the native stack is equivalent to:
+
+```text
+Escape(
+    Printer.hDC,
+    19,                         // PASSTHROUGH
+    Len(payload),               // cbInput: payload length, not framed length
+    framedPayload,              // expression above
+    Null)                       // VT_NULL output argument
+```
+
+This recovers the exact VB6 Variant/BSTR framing order and call shape. It does **not** yet justify real printer emission: `rtcVarBstrFromAnsi` has ANSI/DBCS behavior for values beyond the single-byte range and the dynamic Declare marshaling plus target-driver interpretation still need hardware/runtime validation. `LegacyPrinterEscapeContract` therefore records the proven frame parts, input count and null output argument while `ManagedPassthroughEmissionEnabled` remains false.
 
 ## `smartDriver.StampaRecord` recovered preamble and gates
 
@@ -219,4 +236,4 @@ Consequently the C# replacement continues to use the already-restored applicatio
 
 ## Managed semantic guard
 
-`LegacySmartDriverPrintSemantics` and `LegacyPrinterEscapeContract` now encode the proven preamble, raw constants, `HasRear` gate, cleanup transition and absence of a proven device cancel path as **pure data/state semantics**. They intentionally execute no GDI `Escape`, no `StartDoc`/`FeedCard`, and no mutating ICE API export. This keeps future hardware work testable without silently activating a printer.
+`LegacySmartDriverPrintSemantics` and `LegacyPrinterEscapeContract` now encode the proven preamble, raw constants, `HasRear` gate, exact PrinterEscape frame order/call shape, cleanup transition and absence of a proven device cancel path as **pure data/state semantics**. They intentionally execute no GDI `Escape`, no `StartDoc`/`FeedCard`, and no mutating ICE API export. This keeps future hardware work testable without silently activating a printer.
