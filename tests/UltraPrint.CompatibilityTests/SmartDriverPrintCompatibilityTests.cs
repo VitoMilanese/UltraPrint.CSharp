@@ -11,7 +11,8 @@ internal static class SmartDriverPrintCompatibilityTests
         TestSmartDriverPreambleWithoutOptionalGate();
         TestSmartDriverPreambleWithOptionalGate();
         TestEncodeChipContinuationBranches();
-        TestTransientBooleanStorageAndPreFeedGate();
+        TestOptionalMagstripePreparationAndResultBranches();
+        TestTransientBooleanStorageAndGates();
         TestRearAndCleanupSemantics();
         TestRawSmartCardContinueSequence();
     }
@@ -116,7 +117,42 @@ internal static class SmartDriverPrintCompatibilityTests
             "positive EncodeChip result sets second transient Boolean");
     }
 
-    private static void TestTransientBooleanStorageAndPreFeedGate()
+    private static void TestOptionalMagstripePreparationAndResultBranches()
+    {
+        AssertEqual(2, LegacySmartDriverPrintSemantics.OptionalMagstripeEncodeCallSiteCount,
+            "StampaRecord contains two matching Optional-gated magstripe encode sites");
+        AssertEqual(1, LegacySmartDriverPrintSemantics.OptionalMagstripePreparationHelperRawArgument,
+            "both magstripe preparation helper calls receive numeric Variant 1");
+        AssertSequence(new[] { 0x75C, 0x768, 0x774 },
+            LegacySmartDriverPrintSemantics.ProvenMagstripeInputGetterVtableOffsets,
+            "three frmCarta magstripe input getters are read in native order");
+        AssertEqual(0x6F8, LegacySmartDriverPrintSemantics.EncodeMagStripeWithApiVtableOffset,
+            "smartDriver EncodeMagStripeWithApi vtable offset");
+
+        AssertTrue(!LegacySmartDriverPrintSemantics.ShouldReachOptionalMagstripeEncode(
+                optionalGate: false, preparationHelperResultNonZero: true),
+            "Optional=False skips magstripe encode even when helper result is nonzero");
+        AssertTrue(!LegacySmartDriverPrintSemantics.ShouldReachOptionalMagstripeEncode(
+                optionalGate: true, preparationHelperResultNonZero: false),
+            "zero preparation-helper result skips magstripe encode");
+        AssertTrue(LegacySmartDriverPrintSemantics.ShouldReachOptionalMagstripeEncode(
+                optionalGate: true, preparationHelperResultNonZero: true),
+            "Optional=True plus nonzero helper result reaches magstripe encode");
+
+        var success = LegacySmartDriverPrintSemantics.ResolveOptionalMagstripeEncodeResult(encodeSucceeded: true);
+        AssertTrue(!success.SetsFirstTransientBooleanToTrue,
+            "successful magstripe encode leaves first transient Boolean cleared");
+        AssertTrue(success.ClosesCurrentPageAndDocumentImmediately,
+            "successful magstripe encode immediately closes page/document");
+
+        var failure = LegacySmartDriverPrintSemantics.ResolveOptionalMagstripeEncodeResult(encodeSucceeded: false);
+        AssertTrue(failure.SetsFirstTransientBooleanToTrue,
+            "false magstripe encode result sets first transient Boolean");
+        AssertTrue(!failure.ClosesCurrentPageAndDocumentImmediately,
+            "false magstripe encode result does not immediately close page/document");
+    }
+
+    private static void TestTransientBooleanStorageAndGates()
     {
         AssertEqual(0x62B670,
             LegacySmartDriverPrintSemantics.SmartDriverExamplesModulePublicBaseNativeAddress,
@@ -133,10 +169,15 @@ internal static class SmartDriverPrintCompatibilityTests
             "native WORD Boolean True value");
         AssertEqual((short)0, LegacySmartDriverPrintSemantics.VbBooleanFalseRaw,
             "native WORD Boolean False value");
+
         AssertTrue(!LegacySmartDriverPrintSemantics.ShouldExitAtPreFeedTransientGate(false),
             "cleared second transient Boolean permits FeedCard path");
         AssertTrue(LegacySmartDriverPrintSemantics.ShouldExitAtPreFeedTransientGate(true),
             "set second transient Boolean exits to cleanup before FeedCard");
+        AssertTrue(!LegacySmartDriverPrintSemantics.ShouldExitSharedModuleHelperAtFirstTransientGate(false),
+            "cleared first transient Boolean permits shared helper continuation");
+        AssertTrue(LegacySmartDriverPrintSemantics.ShouldExitSharedModuleHelperAtFirstTransientGate(true),
+            "first transient Boolean True makes shared helper return immediately");
     }
 
     private static void TestRearAndCleanupSemantics()

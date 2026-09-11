@@ -60,11 +60,36 @@ Both are read/written as 16-bit values and native True is `0xFFFF`, consistent w
 
 `StampaRecord` resets the second Boolean to False at `0x005135D2`. Before `_FeedCard`, it checks the same Boolean at `0x00513C98`; nonzero exits to final cleanup at `0x005154C4`. This proves a pre-feed transient gate, but not the user-facing or hardware meaning of that state.
 
+## Optional magnetic-stripe subflow
+
+There are two structurally matching Optional-gated magnetic-stripe sites inside `StampaRecord`: the first occurs before interactive-mode setup (`0x00512EBD` onward), while the second begins after the non-negative `EncodeChip` path (`0x0051454C` onward).
+
+At the second site, the Optional Variant saved in `[ebp-0x34]` is compared to literal VB True through `__vbaVarTstEq` at `0x0051456B`. False skips directly to the later generic-side helper. True clears the first public Boolean (`0x0062B680=False`) and calls the still-unidentified private helper `0x00603FC0` with a numeric Variant `1`. Its returned Variant is compared to numeric zero with `__vbaVarTstNe` at `0x005145E4`; only a nonzero result reaches the magnetic-stripe encode call. The same helper/literal/nonzero gate is present at the pre-interactive site.
+
+Once that gate succeeds, native code reads three `frmCarta` Variant getters at vtable offsets `+0x75C`, `+0x768`, and `+0x774`, in that order. Those three values are passed to the current `smartDriver` object's `+0x6F8` method, the same three-input result-returning call shape used by the earlier magnetic-stripe site and corresponding to the recovered `EncodeMagStripeWithApi` member.
+
+The returned Variant is then coerced through `__vbaBoolVarNull`:
+
+- truthy result: the first public Boolean stays cleared; GDI `EndPage` is called and paired with script `EndPage`, then GDI `EndDoc` is paired with script `EndDoc`;
+- false result: native code sets `0x0062B680=True` at `0x00514C38` and continues without that immediate page/document closure.
+
+The first optional magnetic-stripe site has the same outcome contract: it clears `0x0062B680` before the attempt, uses the same three getters and the same smartDriver method, closes page/document on a truthy result, and sets `0x0062B680=True` on a false result.
+
+This does **not** prove the source-level name or broader semantic meaning of the first Boolean, nor the meaning of helper `0x00603FC0`. Managed code therefore records only the observable gates and outcomes.
+
+## First transient Boolean as shared-helper early-exit gate
+
+The large shared native helper at `0x005F2540` independently consumes the first public Boolean. At `0x005F2A25` it compares WORD `0x0062B680` specifically against `0xFFFF` (VB True); equality jumps directly to the helper's return path at `0x005F5961`.
+
+Consequently the first Boolean has a proven control-flow role beyond `StampaRecord`: when set to VB True it short-circuits this shared helper. Because its source-level variable name and user-facing meaning are still absent from metadata, the C# compatibility layer models this only as an **early-exit gate**, not as a guessed `Error`, `MagstripeFailed`, or similar flag.
+
+The same helper first checks the second public Boolean at `0x005F25C5`; a nonzero value skips the helper's first script-result block to `0x005F292A`. If that block runs, a negative result exits and a non-negative result sets `0x0062B682=True`, corroborating the second-Boolean result-sign semantics already recovered from `StampaRecord`.
+
 ## Rear-side / fallback raw value `1`
 
 A third `_SmartCardContinue@8(hDC, 1)` call exists at `0x00514FC1`. The path is reached by the later rear-side continuation and also by the direct fallback jump from a zero `_FeedCard(hDC, 0x11)` result. After that call native code again executes the `EndPage` / script `EndPage` / `EndDoc` / script `EndDoc` closure sequence.
 
-`frmCarta.HasRear` is read through vtable offset `+0x794` at `0x00514DCE`; false jumps directly to final cleanup, while true permits the later rear-side processing path. This proves the gate and the raw call sequence without assigning a semantic enum name to `SmartCardContinue(1)`.
+`frmCarta.HasRear` is read through vtable offset `+0x794` at `0x00514DCE`; false jumps directly to final cleanup, while true permits the later rear-side processing path. Before that gate, the non-negative branch also calls a large private helper at `0x00613800` with raw first argument `1`; the rear-side path calls the same helper again. The helper's source-level purpose is not yet proven, so no semantic name is assigned to it.
 
 ## Cleanup
 

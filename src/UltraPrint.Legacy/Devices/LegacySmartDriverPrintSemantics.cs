@@ -98,6 +98,15 @@ public readonly record struct LegacyEncodeChipContinuation(
     bool ClosesCurrentPageAndDocumentImmediately);
 
 /// <summary>
+/// Proven branch effect after one of StampaRecord's Optional-gated calls to
+/// EncodeMagStripeWithApi has already been reached and its return value has been coerced
+/// through the native VB6 Boolean/Null helper. This record performs no printer I/O.
+/// </summary>
+public readonly record struct LegacyOptionalMagstripeEncodeContinuation(
+    bool SetsFirstTransientBooleanToTrue,
+    bool ClosesCurrentPageAndDocumentImmediately);
+
+/// <summary>
 /// Proven, non-executing smartDriver.StampaRecord orchestration facts. This class models
 /// branch gates and raw constants only; it never calls ICE_API or GDI printer mutation APIs.
 /// </summary>
@@ -122,6 +131,23 @@ public static class LegacySmartDriverPrintSemantics
     public const int NonNegativeEncodeChipResultContinueRawValue = 0;
     public const int RearOrFeedFallbackContinueRawValue = 1;
 
+    /// <summary>
+    /// StampaRecord contains two structurally matching Optional-gated magnetic-stripe encode
+    /// sites: one before interactive-mode setup and one after the non-negative EncodeChip path.
+    /// </summary>
+    public const int OptionalMagstripeEncodeCallSiteCount = 2;
+
+    /// <summary>
+    /// The unknown preparation helper at native 0x00603FC0 receives a numeric Variant 1 in
+    /// both StampaRecord magnetic-stripe sites. Its source-level meaning is intentionally unclaimed.
+    /// </summary>
+    public const int OptionalMagstripePreparationHelperRawArgument = 1;
+
+    public const int FirstMagstripeInputGetterVtableOffset = 0x75C;
+    public const int SecondMagstripeInputGetterVtableOffset = 0x768;
+    public const int ThirdMagstripeInputGetterVtableOffset = 0x774;
+    public const int EncodeMagStripeWithApiVtableOffset = 0x6F8;
+
     public const string StartDocHook = "StartDoc";
     public const string StartPageHook = "StartPage";
     public const string EncodeChipHook = "EncodeChip";
@@ -134,6 +160,12 @@ public static class LegacySmartDriverPrintSemantics
         NonNegativeEncodeChipResultContinueRawValue,
         RearOrFeedFallbackContinueRawValue
     ];
+    private static readonly int[] MagstripeInputGetterOffsets =
+    [
+        FirstMagstripeInputGetterVtableOffset,
+        SecondMagstripeInputGetterVtableOffset,
+        ThirdMagstripeInputGetterVtableOffset
+    ];
     private static readonly string[] ScriptHookNames =
         [StartDocHook, StartPageHook, EncodeChipHook, EndPageHook, EndDocHook];
 
@@ -142,6 +174,12 @@ public static class LegacySmartDriverPrintSemantics
     /// address order: 0x0051401D, 0x00514529, 0x00514FC1.
     /// </summary>
     public static IReadOnlyList<int> SmartCardContinueRawValues => SmartCardContinueValues;
+
+    /// <summary>
+    /// The three frmCarta getter vtable offsets read in order before both native
+    /// EncodeMagStripeWithApi calls. Source-level property names are not claimed here.
+    /// </summary>
+    public static IReadOnlyList<int> ProvenMagstripeInputGetterVtableOffsets => MagstripeInputGetterOffsets;
 
     /// <summary>Script lifecycle names directly embedded in StampaRecord.</summary>
     public static IReadOnlyList<string> ProvenScriptHooks => ScriptHookNames;
@@ -189,11 +227,44 @@ public static class LegacySmartDriverPrintSemantics
                 ClosesCurrentPageAndDocumentImmediately: false);
 
     /// <summary>
+    /// Each Optional-gated magnetic-stripe site first calls the still-unnamed helper at
+    /// 0x00603FC0 and compares its returned Variant with numeric zero using __vbaVarTstNe.
+    /// EncodeMagStripeWithApi is reached only when Optional=True and that helper result is nonzero.
+    /// </summary>
+    public static bool ShouldReachOptionalMagstripeEncode(
+        bool optionalGate,
+        bool preparationHelperResultNonZero) =>
+        optionalGate && preparationHelperResultNonZero;
+
+    /// <summary>
+    /// After EncodeMagStripeWithApi is reached, native __vbaBoolVarNull coerces its result.
+    /// False sets the first public WORD Boolean and continues without immediate EndPage/EndDoc;
+    /// True leaves that Boolean cleared and immediately closes page/doc with matching script hooks.
+    /// </summary>
+    public static LegacyOptionalMagstripeEncodeContinuation ResolveOptionalMagstripeEncodeResult(
+        bool encodeSucceeded) =>
+        encodeSucceeded
+            ? new(
+                SetsFirstTransientBooleanToTrue: false,
+                ClosesCurrentPageAndDocumentImmediately: true)
+            : new(
+                SetsFirstTransientBooleanToTrue: true,
+                ClosesCurrentPageAndDocumentImmediately: false);
+
+    /// <summary>
     /// The second public Boolean is checked immediately before FeedCard. A nonzero value
     /// branches directly to final cleanup. Its source-level name/meaning is still unknown.
     /// </summary>
     public static bool ShouldExitAtPreFeedTransientGate(bool secondTransientBoolean) =>
         secondTransientBoolean;
+
+    /// <summary>
+    /// The shared native helper at 0x005F2540 compares the first public WORD Boolean to
+    /// VB True (0xFFFF) and returns immediately when it is set. The flag's source name and
+    /// broader semantic meaning remain intentionally unclaimed.
+    /// </summary>
+    public static bool ShouldExitSharedModuleHelperAtFirstTransientGate(bool firstTransientBoolean) =>
+        firstTransientBoolean;
 
     /// <summary>
     /// Native code reads frmCarta.HasRear before entering its later rear-side continuation.
