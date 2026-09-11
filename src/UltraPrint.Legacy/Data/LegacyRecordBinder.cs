@@ -45,6 +45,9 @@ public static class LegacyRecordBinder
             ScriptApplication = source.ScriptApplication,
             UseWin32ApiPrinting = source.UseWin32ApiPrinting
         };
+        clone.MagneticStripe.Track1 = source.MagneticStripe.Track1;
+        clone.MagneticStripe.Track2 = source.MagneticStripe.Track2;
+        clone.MagneticStripe.Track3 = source.MagneticStripe.Track3;
 
         foreach (var original in source.Fields.OrderBy(x => x.Index))
         {

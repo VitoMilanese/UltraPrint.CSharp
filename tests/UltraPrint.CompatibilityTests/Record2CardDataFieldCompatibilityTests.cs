@@ -14,6 +14,7 @@ internal static class Record2CardDataFieldCompatibilityTests
         TestBarcodeRecordBinding();
         TestManagedOverridePrecedence();
         TestPlaceholderFallback();
+        TestMagneticTracksSurviveBindingClone();
     }
 
     private static void TestNativeOffsets()
@@ -136,6 +137,29 @@ internal static class Record2CardDataFieldCompatibilityTests
         var bound = LegacyRecordBinder.CreateBoundLayout(layout, record);
         AssertEqual("1234", bound.Fields.Single().LegacyPayload,
             "%COLUMN% compatibility fallback remains available when native DataField is empty");
+    }
+
+    private static void TestMagneticTracksSurviveBindingClone()
+    {
+        var layout = new CardLayout { Name = "MagstripeClone", WidthMm = 85, HeightMm = 54, Dpi = 300 };
+        layout.MagneticStripe.Track1 = "TRACK-1";
+        layout.MagneticStripe.Track2 = "[CARD_NO]";
+        layout.MagneticStripe.Track3 = "+(SerialCounter)";
+
+        var bound = LegacyRecordBinder.CreateBoundLayout(
+            layout,
+            new Dictionary<string, object?> { ["CARD_NO"] = "1234" });
+
+        AssertEqual("TRACK-1", bound.MagneticStripe.Track1,
+            "Record2Card clone preserves layout-global magnetic Track 1 expression");
+        AssertEqual("[CARD_NO]", bound.MagneticStripe.Track2,
+            "Record2Card clone preserves layout-global magnetic Track 2 expression");
+        AssertEqual("+(SerialCounter)", bound.MagneticStripe.Track3,
+            "Record2Card clone preserves layout-global magnetic Track 3 expression");
+
+        bound.MagneticStripe.Track1 = "CHANGED";
+        AssertEqual("TRACK-1", layout.MagneticStripe.Track1,
+            "bound layout owns an independent magnetic-track settings object");
     }
 
     private static LayoutField FieldWithNativeDataField(
