@@ -115,7 +115,17 @@ Implemented scripting compatibility foundation:
 
 This scripting layer remains intentionally partial. The main remaining compatibility gap is the callable member surface behind `Carta`, `Mainform`, database/table, sequence/print and device objects, plus production-safe automatic layout lifecycle integration and exact error-438 editor remapping. See [`docs/SCRIPT_COMPATIBILITY.md`](docs/SCRIPT_COMPATIBILITY.md) and [`docs/SCRIPT_OBJECT_MODEL.md`](docs/SCRIPT_OBJECT_MODEL.md).
 
-Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex/chip-timing validation, device-specific print status/cancel, device profiles, card-printer APIs, magnetic stripe, smart-card/chip execution and remaining options/job workflows.
+Implemented device/card-printer compatibility foundation:
+
+- Recovered the exact 24-export x86 stdcall surface dynamically loaded from external `ICE_API.DLL`.
+- **Devices -> Printer / Device diagnostics...** restores the proven `Campo.ini` device/profile surface and explicitly reads ICE polling/model/serial/magnetic-head/active-job/error state when the compatible vendor runtime is available.
+- Recovered `PrintWithCardStatus`: `_GetCardId@8` followed by `_GetCardStatus@28` level 1 with a maximum of 60 immediate status calls.
+- Recovered the production `smartDriver.StampaRecord` orchestration envelope as non-executing compatibility semantics: Optional Variant Missing => False; interactive mode enable; Win32 `StartDocA`/`StartPage` plus script hooks; Optional=True pre-print magstripe preparation and card-side rotation; `_FeedCard(hDC, 0x11)`; `EncodeChip`; raw SmartCardContinue `1/0/1`; `HasRear` rear-side gate; and interactive-mode cleanup.
+- Recovered `MainForm.PrinterEscape` as GDI `PASSTHROUGH` escape 19 followed by `Printer.EndDoc`. Its first explicit argument is unused and its second is the payload; exact legacy payload byte framing is not emitted yet.
+- No ICE card-job cancel export and no `AbortDoc` / `KillDoc` / `CancelDC` path is proven, so hardware-level cancellation is deliberately not invented. Existing managed batch/sequence cancellation stays cooperative.
+- All feed/rotate/magstripe/chip/cleaning/firmware printer mutations remain disabled until their remaining branch semantics and real hardware behavior are validated.
+
+Still required for full parity includes database create/schema/import/write-back, complete `.ly` flag/type decoding, exact security privilege gating, remaining VBScript object facades, counters/barcodes, image acquisition/editing, the exact legacy `cboDimensioni` relationship to physical printer paper size, real-printer clipping/duplex/chip-timing validation, full magstripe/smart-card execution, exact PrinterEscape payload framing, active smartDriver mutation on supported hardware, remaining device-profile editing/module sequencing, and remaining options/job workflows.
 
 See [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) for the authoritative parity checklist and [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for implementation order.
 
@@ -160,4 +170,4 @@ dotnet run --project tools/UltraPrint.RecoveryCli -- startup-plan "C:\Program Fi
 
 Only behavior proven from binary metadata/native flow or real legacy data is treated as a confirmed compatibility contract. Unknown `.ly` bytes remain preserved rather than guessed. A workflow is marked complete only when it actually works against legacy inputs; placeholder menu items do not count.
 
-See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md`, `docs/SEQUENCE_COMPATIBILITY.md` and `reverse-engineering/BATCH_PRINTING_NATIVE.md` for the recovered structures and confidence level.
+See `docs/LEGACY_FORMATS.md`, `docs/REVERSE_ENGINEERING.md`, `docs/DATABASE_COMPATIBILITY.md`, `docs/OPERATOR_COMPATIBILITY.md`, `docs/SCRIPT_COMPATIBILITY.md`, `docs/SCRIPT_OBJECT_MODEL.md`, `docs/SEQUENCE_COMPATIBILITY.md`, `reverse-engineering/BATCH_PRINTING_NATIVE.md` and `reverse-engineering/SMARTDRIVER_ICE_API_NATIVE.md` for the recovered structures and confidence level.
