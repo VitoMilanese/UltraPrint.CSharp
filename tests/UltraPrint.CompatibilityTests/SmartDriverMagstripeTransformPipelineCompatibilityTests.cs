@@ -30,7 +30,7 @@ internal static class SmartDriverMagstripeTransformPipelineCompatibilityTests
         AssertEqual(0x6079D0,
             stages.Single(x => x.Kind == LegacyMagstripePreparationPipelineStageKind.ExpandPlusParenthesizedTokens)
                 .NativeAddress!.Value,
-            "+(...) private expansion helper address");
+            "+(...) counter expansion helper address");
         AssertEqual(0x606910,
             stages.Single(x => x.Kind == LegacyMagstripePreparationPipelineStageKind.ExpandBracketedTokens)
                 .NativeAddress!.Value,
@@ -55,7 +55,7 @@ internal static class SmartDriverMagstripeTransformPipelineCompatibilityTests
         AssertTrue(LegacySmartDriverMagstripeTransformPipelineSemantics.RemovesNulCharactersAfterInterpretLine,
             "Interpretariga output is stripped of embedded NUL characters");
         AssertEqual(1, LegacySmartDriverMagstripeTransformPipelineSemantics.SmartDriverExpansionRawMode,
-            "smartDriver propagates raw expansion mode 1");
+            "smartDriver increments matched +(...) counter by 1");
     }
 
     private static void TestTokenExpansionContracts()
@@ -66,7 +66,12 @@ internal static class SmartDriverMagstripeTransformPipelineCompatibilityTests
             "+(...) closing delimiter");
         AssertEqual(0x5F5A90,
             LegacySmartDriverMagstripeTransformPipelineSemantics.PlusParenthesisReplacementResolverNativeAddress,
-            "+(...) replacement resolver helper address");
+            "+(...) persistent counter resolver address");
+        AssertTrue(LegacySmartDriverMagstripeTransformPipelineSemantics.PlusParenthesisTokensArePersistentCounters,
+            "+(...) tokens are backed by frmContatori persistent counters");
+        AssertEqual("Contatori.dat",
+            LegacySmartDriverMagstripeTransformPipelineSemantics.CounterPersistenceFileName,
+            "+(...) counter persistence filename");
 
         AssertEqual("[", LegacySmartDriverMagstripeTransformPipelineSemantics.BracketOpeningDelimiter,
             "[...] opening delimiter");

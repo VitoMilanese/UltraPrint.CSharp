@@ -21,8 +21,9 @@ public readonly record struct LegacyMagstripePreparationPipelineStage(
 
 /// <summary>
 /// Pure structural contract for the transformation performed by native helper 0x00603FC0
-/// before it writes each prepared Traccia1/2/3 value into frmCarta. The replacement values
-/// produced inside the two private token-expansion helpers are intentionally not guessed.
+/// before it writes each prepared Traccia1/2/3 value into frmCarta. The +(...) stage is now
+/// identified as persistent frmContatori counter expansion; the deeper [...] semantics remain
+/// deliberately unclaimed. No legacy macro or hardware code executes here.
 /// </summary>
 public static class LegacySmartDriverMagstripeTransformPipelineSemantics
 {
@@ -44,7 +45,8 @@ public static class LegacySmartDriverMagstripeTransformPipelineSemantics
 
     /// <summary>
     /// The private +(...) helper receives the same raw mode value propagated into 0x00603FC0
-    /// by smartDriver.StampaRecord. In the recovered production call sites that value is 1.
+    /// by smartDriver.StampaRecord. Native counter recovery proves this value is the amount
+    /// added to the matched counter; smartDriver therefore increments matching counters by 1.
     /// </summary>
     public const int SmartDriverExpansionRawMode = 1;
 
@@ -77,10 +79,12 @@ public static class LegacySmartDriverMagstripeTransformPipelineSemantics
 
     /// <summary>
     /// 0x006079D0 repeatedly extracts +(...) bodies through Funzioni.GetInside and replaces
-    /// the complete +(...) occurrence through Funzioni.Sostituisci. The resolver used to
-    /// obtain the replacement value is private helper 0x005F5A90 and remains semantically unnamed.
+    /// complete occurrences through Funzioni.Sostituisci. Helper 0x005F5A90 is now proven to
+    /// resolve the matching frmContatori record, update/persist it, and return its formatted value.
     /// </summary>
     public const int PlusParenthesisReplacementResolverNativeAddress = 0x5F5A90;
+    public const bool PlusParenthesisTokensArePersistentCounters = true;
+    public const string CounterPersistenceFileName = "Contatori.dat";
 
     /// <summary>
     /// 0x00606910 begins by extracting [...] bodies through the same GetInside contract.
