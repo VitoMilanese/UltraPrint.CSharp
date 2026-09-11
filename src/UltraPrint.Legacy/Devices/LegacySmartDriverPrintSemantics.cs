@@ -84,9 +84,24 @@ public enum LegacySmartDriverPrintStepKind
     DisableInteractiveMode
 }
 
+public enum LegacySmartDriverCardSide
+{
+    Front = 0,
+    Rear = 1
+}
+
 public readonly record struct LegacySmartDriverPrintStep(
     LegacySmartDriverPrintStepKind Kind,
     int? RawArgument = null);
+
+/// <summary>
+/// Proven branch effect of the native FeedCard return test. This remains pure state:
+/// no ICE or GDI function is invoked by the managed compatibility model.
+/// </summary>
+public readonly record struct LegacyFeedCardContinuation(
+    bool RunsEncodeChip,
+    int? SmartCardContinueRawArgument,
+    bool ClosesCurrentPageAndDocumentImmediately);
 
 /// <summary>
 /// Proven branch effect immediately after the numeric EncodeChip script result is compared
@@ -129,7 +144,19 @@ public static class LegacySmartDriverPrintSemantics
 
     public const int NegativeEncodeChipResultContinueRawValue = 1;
     public const int NonNegativeEncodeChipResultContinueRawValue = 0;
-    public const int RearOrFeedFallbackContinueRawValue = 1;
+    public const int FeedCardFailureContinueRawValue = 1;
+
+    /// <summary>
+    /// Private side-processing helper called by smartDriver.StampaRecord after the post-chip
+    /// optional magnetic-stripe stage. The source-level helper name is not recovered.
+    /// </summary>
+    public const int SideProcessingHelperNativeAddress = 0x613800;
+
+    /// <summary>
+    /// smartDriver passes raw first argument 1 to both Front and Rear helper calls.
+    /// Other callers also use 0, but the meaning of this mode value is not proven.
+    /// </summary>
+    public const int SmartDriverSideProcessingHelperRawMode = 1;
 
     /// <summary>
     /// StampaRecord contains two structurally matching Optional-gated magnetic-stripe encode
@@ -158,7 +185,7 @@ public static class LegacySmartDriverPrintSemantics
     [
         NegativeEncodeChipResultContinueRawValue,
         NonNegativeEncodeChipResultContinueRawValue,
-        RearOrFeedFallbackContinueRawValue
+        FeedCardFailureContinueRawValue
     ];
     private static readonly int[] MagstripeInputGetterOffsets =
     [
@@ -166,6 +193,10 @@ public static class LegacySmartDriverPrintSemantics
         SecondMagstripeInputGetterVtableOffset,
         ThirdMagstripeInputGetterVtableOffset
     ];
+    private static readonly LegacySmartDriverCardSide[] FrontOnlySideProcessingOrder =
+        [LegacySmartDriverCardSide.Front];
+    private static readonly LegacySmartDriverCardSide[] FrontThenRearSideProcessingOrder =
+        [LegacySmartDriverCardSide.Front, LegacySmartDriverCardSide.Rear];
     private static readonly string[] ScriptHookNames =
         [StartDocHook, StartPageHook, EncodeChipHook, EndPageHook, EndDocHook];
 
@@ -187,11 +218,12 @@ public static class LegacySmartDriverPrintSemantics
     /// <summary>
     /// The lone Optional Variant argument defaults to False. When True it enables the
     /// pre-print magnetic-stripe/previous-document branch and the RotateCardSide call.
+    /// This preamble stops at FeedCard because the next native action depends on FeedCard's return.
     /// Its original source-level parameter name has not been proven.
     /// </summary>
     public static IReadOnlyList<LegacySmartDriverPrintStep> BuildProvenPreamble(bool optionalGate)
     {
-        var steps = new List<LegacySmartDriverPrintStep>(10);
+        var steps = new List<LegacySmartDriverPrintStep>(9);
         if (optionalGate)
             steps.Add(new(LegacySmartDriverPrintStepKind.OptionalPrePrintMagstripePreparation));
 
@@ -205,9 +237,23 @@ public static class LegacySmartDriverPrintSemantics
             steps.Add(new(LegacySmartDriverPrintStepKind.RotateCardSide, RotateCardSideRawTrue));
 
         steps.Add(new(LegacySmartDriverPrintStepKind.FeedCard, FeedCardRawMode));
-        steps.Add(new(LegacySmartDriverPrintStepKind.ScriptEncodeChip));
         return steps;
     }
+
+    /// <summary>
+    /// A nonzero FeedCard return proceeds to script EncodeChip. A zero return branches
+    /// directly to SmartCardContinue(hDC, 1), EndPage/EndDoc and matching script hooks.
+    /// </summary>
+    public static LegacyFeedCardContinuation ResolveFeedCardContinuation(bool feedSucceeded) =>
+        feedSucceeded
+            ? new(
+                RunsEncodeChip: true,
+                SmartCardContinueRawArgument: null,
+                ClosesCurrentPageAndDocumentImmediately: false)
+            : new(
+                RunsEncodeChip: false,
+                SmartCardContinueRawArgument: FeedCardFailureContinueRawValue,
+                ClosesCurrentPageAndDocumentImmediately: true);
 
     /// <summary>
     /// Native __vbaVarTstLt compares the EncodeChip result with numeric zero. For a negative
@@ -267,8 +313,17 @@ public static class LegacySmartDriverPrintSemantics
         firstTransientBoolean;
 
     /// <summary>
-    /// Native code reads frmCarta.HasRear before entering its later rear-side continuation.
-    /// This is deliberately kept as a pure gate rather than enabling any printer action.
+    /// When control reaches the private 0x00613800 side-processing stage, smartDriver always
+    /// processes raw side Variant 0 (Fronte) first. If frmCarta.HasRear is true it then invokes
+    /// the same helper for raw side Variant 1 (Retro). The Rear call returns directly to cleanup.
+    /// </summary>
+    public static IReadOnlyList<LegacySmartDriverCardSide> BuildSideProcessingOrder(bool hasRear) =>
+        hasRear ? FrontThenRearSideProcessingOrder : FrontOnlySideProcessingOrder;
+
+    public static int GetRawSideVariant(LegacySmartDriverCardSide side) => (int)side;
+
+    /// <summary>
+    /// Native code reads frmCarta.HasRear after the Front side-processing helper call.
     /// </summary>
     public static bool ShouldEnterRearSide(bool hasRear) => hasRear;
 

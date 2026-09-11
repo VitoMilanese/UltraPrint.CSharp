@@ -1,10 +1,21 @@
 # smartDriver EncodeChip continuation recovery
 
-This note isolates the post-`EncodeChip` control flow in UltraPrint 2.2.115 `smartDriver.StampaRecord` (`0x00512D20`). It records only branch predicates, raw ICE arguments and public-module state that are directly supported by native evidence. It does not assign hardware semantics to the raw `SmartCardContinue` values and does not enable printer mutation.
+This note isolates the post-`EncodeChip` control flow in UltraPrint 2.2.115 `smartDriver.StampaRecord` (`0x00512D20`). It records only branch predicates, raw ICE arguments and public-module state that are directly supported by native evidence. It does not assign hardware semantics to unresolved raw values and does not enable printer mutation.
+
+## FeedCard result boundary
+
+`_FeedCard@8(hDC, 0x11)` is called at `0x00513D15`. Its return is normalized into the native Boolean tested at `0x00513D4D`.
+
+- nonzero return continues to the `Funzioni.Vbscript("EncodeChip", ...)` dispatch;
+- zero return takes the jump at `0x00513D50` directly to `0x00514F52`.
+
+The `0x00514F52` block obtains `Printer.hDC`, calls `_SmartCardContinue@8(hDC, 1)` at `0x00514FC1`, then executes GDI `EndPage` + script `EndPage`, GDI `EndDoc` + script `EndDoc`, and finally cleanup.
+
+A complete search of the recovered native flow shows the jump at `0x00513D50` is the only branch into `0x00514F52`. Therefore this third raw `SmartCardContinue(1)` site is a **FeedCard-failure continuation**, not a rear-side continuation. Managed `BuildProvenPreamble` consequently stops at FeedCard; `EncodeChip` is modeled only on the successful FeedCard continuation.
 
 ## `EncodeChip` result test
 
-After `_FeedCard(hDC, 0x11)` succeeds, `StampaRecord` dispatches the layout script hook `Funzioni.Vbscript("EncodeChip", ...)`. The returned Variant is preserved at `[ebp-0xC4]`.
+After a successful `_FeedCard(hDC, 0x11)`, `StampaRecord` dispatches the layout script hook `Funzioni.Vbscript("EncodeChip", ...)`. The returned Variant is preserved at `[ebp-0xC4]`.
 
 At `0x00513F7D` native code pushes that returned Variant, then builds and pushes a literal numeric zero Variant (`VT_I2`) at `0x00513F89`-`0x00513F9C`, and calls `__vbaVarTstLt` at `0x00513F9F`. The VB6 runtime helper receives the first pushed Variant as the left operand and the second as the right operand, so the recovered predicate is:
 
@@ -34,7 +45,7 @@ When the `< 0` test is false, native execution reaches `0x005144B1` and:
 1. writes VB True (`0xFFFF`) to the WORD at `0x0062B682`;
 2. obtains `Printer.hDC`;
 3. calls `_SmartCardContinue@8(hDC, 0)` at `0x00514529`;
-4. continues into optional magnetic-stripe and generic module processing instead of immediately closing the document.
+4. continues into optional magnetic-stripe and side-processing logic instead of immediately closing the document.
 
 Therefore the proven split is:
 
@@ -64,7 +75,7 @@ Both are read/written as 16-bit values and native True is `0xFFFF`, consistent w
 
 There are two structurally matching Optional-gated magnetic-stripe sites inside `StampaRecord`: the first occurs before interactive-mode setup (`0x00512EBD` onward), while the second begins after the non-negative `EncodeChip` path (`0x0051454C` onward).
 
-At the second site, the Optional Variant saved in `[ebp-0x34]` is compared to literal VB True through `__vbaVarTstEq` at `0x0051456B`. False skips directly to the later generic-side helper. True clears the first public Boolean (`0x0062B680=False`) and calls the still-unidentified private helper `0x00603FC0` with a numeric Variant `1`. Its returned Variant is compared to numeric zero with `__vbaVarTstNe` at `0x005145E4`; only a nonzero result reaches the magnetic-stripe encode call. The same helper/literal/nonzero gate is present at the pre-interactive site.
+At the second site, the Optional Variant saved in `[ebp-0x34]` is compared to literal VB True through `__vbaVarTstEq` at `0x0051456B`. False skips directly to the later side-processing helper. True clears the first public Boolean (`0x0062B680=False`) and calls the still-unidentified private helper `0x00603FC0` with a numeric Variant `1`. Its returned Variant is compared to numeric zero with `__vbaVarTstNe` at `0x005145E4`; only a nonzero result reaches the magnetic-stripe encode call. The same helper/literal/nonzero gate is present at the pre-interactive site.
 
 Once that gate succeeds, native code reads three `frmCarta` Variant getters at vtable offsets `+0x75C`, `+0x768`, and `+0x774`, in that order. Those three values are passed to the current `smartDriver` object's `+0x6F8` method, the same three-input result-returning call shape used by the earlier magnetic-stripe site and corresponding to the recovered `EncodeMagStripeWithApi` member.
 
@@ -85,11 +96,40 @@ Consequently the first Boolean has a proven control-flow role beyond `StampaReco
 
 The same helper first checks the second public Boolean at `0x005F25C5`; a nonzero value skips the helper's first script-result block to `0x005F292A`. If that block runs, a negative result exits and a non-negative result sets `0x0062B682=True`, corroborating the second-Boolean result-sign semantics already recovered from `StampaRecord`.
 
-## Rear-side / fallback raw value `1`
+## Side-processing helper: Front = 0, Rear = 1
 
-A third `_SmartCardContinue@8(hDC, 1)` call exists at `0x00514FC1`. The path is reached by the later rear-side continuation and also by the direct fallback jump from a zero `_FeedCard(hDC, 0x11)` result. After that call native code again executes the `EndPage` / script `EndPage` / `EndDoc` / script `EndDoc` closure sequence.
+After the post-`EncodeChip` optional magnetic-stripe stage reaches its continuing path, `smartDriver.StampaRecord` calls the private helper at `0x00613800`.
 
-`frmCarta.HasRear` is read through vtable offset `+0x794` at `0x00514DCE`; false jumps directly to final cleanup, while true permits the later rear-side processing path. Before that gate, the non-negative branch also calls a large private helper at `0x00613800` with raw first argument `1`; the rear-side path calls the same helper again. The helper's source-level purpose is not yet proven, so no semantic name is assigned to it.
+The first call at `0x00514D6F` passes raw first argument `1` and a side Variant initialized to integer `0`. After that call, native code reads `frmCarta.HasRear` through vtable offset `+0x794` at `0x00514DCE`:
+
+- `HasRear=False` goes directly to final cleanup;
+- `HasRear=True` permits a second call to the same helper at `0x00514F17`, again with raw first argument `1`, but with the side Variant initialized to integer `1`.
+
+The second helper call then goes directly to cleanup. It does **not** branch to the `_SmartCardContinue(hDC, 1)` block at `0x00514F52`.
+
+The helper itself proves the meaning of the side Variant. Around `0x00615693` it compares `[ebp+0x10]` with numeric zero. The zero branch loads the BSTR `Fronte` at `0x00432868`; the nonzero/one branch loads `Retro` at `0x0043287C`. Therefore the side mapping used by this flow is exactly:
+
+```text
+0 = Front / Fronte
+1 = Rear / Retro
+```
+
+For `smartDriver.StampaRecord`, the recovered side-processing order is therefore:
+
+```text
+helper(raw mode 1, side 0 / Front)
+if frmCarta.HasRear:
+    helper(raw mode 1, side 1 / Rear)
+cleanup
+```
+
+The helper's first argument is also tested internally and other callers use raw value `0`, while smartDriver uses raw value `1` for both side calls. Its semantic name is not yet proven, so managed code records only `SmartDriverSideProcessingHelperRawMode = 1` and does not invent a mode enum.
+
+## FeedCard failure raw value `1`
+
+The third `_SmartCardContinue@8(hDC, 1)` call at `0x00514FC1` belongs exclusively to the zero-return branch of `_FeedCard(hDC, 0x11)`. The jump from `0x00513D50` to `0x00514F52` is the only recovered branch into this block.
+
+After `_SmartCardContinue(hDC, 1)`, native code again performs `EndPage` / script `EndPage` / `EndDoc` / script `EndDoc`, then final cleanup. Because the successful FeedCard path proceeds through `EncodeChip`, this branch must be modeled separately from both the `EncodeChip < 0` raw-1 branch and the Front/Rear side-processing helper.
 
 ## Cleanup
 
@@ -100,4 +140,4 @@ At `0x005154C4` final cleanup always:
 - calls `_SetInteractiveMode@8(hDC, FALSE)` at `0x00515541`;
 - later writes `frmCarta.InteractiveMode = False`.
 
-The C# layer keeps all of the above as pure data/state semantics. No new path in this recovery slice executes `_SmartCardContinue`, `EndPage`, `EndDoc`, `_FeedCard`, magnetic-stripe APIs, or any other printer-mutating call.
+The C# layer keeps all of the above as pure data/state semantics. No new path in this recovery slice executes `_SmartCardContinue`, `EndPage`, `EndDoc`, `_FeedCard`, magnetic-stripe APIs, the private side-processing helper, or any other printer-mutating call.

@@ -10,9 +10,11 @@ internal static class SmartDriverPrintCompatibilityTests
         TestPrinterEscapeFraming();
         TestSmartDriverPreambleWithoutOptionalGate();
         TestSmartDriverPreambleWithOptionalGate();
+        TestFeedCardContinuationBranches();
         TestEncodeChipContinuationBranches();
         TestOptionalMagstripePreparationAndResultBranches();
         TestTransientBooleanStorageAndGates();
+        TestSideProcessingOrder();
         TestRearAndCleanupSemantics();
         TestRawSmartCardContinueSequence();
     }
@@ -62,17 +64,18 @@ internal static class SmartDriverPrintCompatibilityTests
                 LegacySmartDriverPrintStepKind.ScriptStartDocument,
                 LegacySmartDriverPrintStepKind.StartPage,
                 LegacySmartDriverPrintStepKind.ScriptStartPage,
-                LegacySmartDriverPrintStepKind.FeedCard,
-                LegacySmartDriverPrintStepKind.ScriptEncodeChip
+                LegacySmartDriverPrintStepKind.FeedCard
             },
             steps.Select(x => x.Kind),
-            "smartDriver preamble without Optional=True branch");
+            "smartDriver preamble without Optional=True branch stops at FeedCard result boundary");
 
         AssertEqual(LegacySmartDriverPrintSemantics.InteractiveModeRawTrue,
             steps[0].RawArgument!.Value, "SetInteractiveMode TRUE raw value");
         AssertEqual(LegacySmartDriverPrintSemantics.FeedCardRawMode,
             steps.Single(x => x.Kind == LegacySmartDriverPrintStepKind.FeedCard).RawArgument!.Value,
             "FeedCard raw mode");
+        AssertTrue(!steps.Any(x => x.Kind == LegacySmartDriverPrintStepKind.ScriptEncodeChip),
+            "EncodeChip is not unconditional before FeedCard return is tested");
     }
 
     private static void TestSmartDriverPreambleWithOptionalGate()
@@ -86,6 +89,25 @@ internal static class SmartDriverPrintCompatibilityTests
         var rotateIndex = steps.ToList().FindIndex(x => x.Kind == LegacySmartDriverPrintStepKind.RotateCardSide);
         var feedIndex = steps.ToList().FindIndex(x => x.Kind == LegacySmartDriverPrintStepKind.FeedCard);
         AssertTrue(rotateIndex > 0 && rotateIndex < feedIndex, "RotateCardSide precedes first FeedCard");
+        AssertTrue(!steps.Any(x => x.Kind == LegacySmartDriverPrintStepKind.ScriptEncodeChip),
+            "Optional preamble also stops at FeedCard result boundary");
+    }
+
+    private static void TestFeedCardContinuationBranches()
+    {
+        var success = LegacySmartDriverPrintSemantics.ResolveFeedCardContinuation(feedSucceeded: true);
+        AssertTrue(success.RunsEncodeChip, "nonzero FeedCard return proceeds to EncodeChip");
+        AssertTrue(!success.SmartCardContinueRawArgument.HasValue,
+            "successful FeedCard does not take third SmartCardContinue branch");
+        AssertTrue(!success.ClosesCurrentPageAndDocumentImmediately,
+            "successful FeedCard does not immediately close page/document");
+
+        var failure = LegacySmartDriverPrintSemantics.ResolveFeedCardContinuation(feedSucceeded: false);
+        AssertTrue(!failure.RunsEncodeChip, "zero FeedCard return skips EncodeChip");
+        AssertEqual(1, failure.SmartCardContinueRawArgument!.Value,
+            "zero FeedCard return uses SmartCardContinue raw 1");
+        AssertTrue(failure.ClosesCurrentPageAndDocumentImmediately,
+            "zero FeedCard return immediately closes page/document");
     }
 
     private static void TestEncodeChipContinuationBranches()
@@ -180,6 +202,24 @@ internal static class SmartDriverPrintCompatibilityTests
             "first transient Boolean True makes shared helper return immediately");
     }
 
+    private static void TestSideProcessingOrder()
+    {
+        AssertEqual(0x613800, LegacySmartDriverPrintSemantics.SideProcessingHelperNativeAddress,
+            "private side-processing helper native address");
+        AssertEqual(1, LegacySmartDriverPrintSemantics.SmartDriverSideProcessingHelperRawMode,
+            "smartDriver passes raw helper mode 1 on both side calls");
+        AssertEqual(0, LegacySmartDriverPrintSemantics.GetRawSideVariant(LegacySmartDriverCardSide.Front),
+            "Fronte side uses raw Variant 0");
+        AssertEqual(1, LegacySmartDriverPrintSemantics.GetRawSideVariant(LegacySmartDriverCardSide.Rear),
+            "Retro side uses raw Variant 1");
+        AssertSequence(new[] { LegacySmartDriverCardSide.Front },
+            LegacySmartDriverPrintSemantics.BuildSideProcessingOrder(hasRear: false),
+            "front-only layout performs one Front side helper pass");
+        AssertSequence(new[] { LegacySmartDriverCardSide.Front, LegacySmartDriverCardSide.Rear },
+            LegacySmartDriverPrintSemantics.BuildSideProcessingOrder(hasRear: true),
+            "rear-enabled layout performs Front then Rear helper passes");
+    }
+
     private static void TestRearAndCleanupSemantics()
     {
         AssertTrue(!LegacySmartDriverPrintSemantics.ShouldEnterRearSide(false), "HasRear=False skips rear continuation");
@@ -201,8 +241,8 @@ internal static class SmartDriverPrintCompatibilityTests
             "negative EncodeChip raw continue value");
         AssertEqual(0, LegacySmartDriverPrintSemantics.NonNegativeEncodeChipResultContinueRawValue,
             "non-negative EncodeChip raw continue value");
-        AssertEqual(1, LegacySmartDriverPrintSemantics.RearOrFeedFallbackContinueRawValue,
-            "rear/feed fallback raw continue value");
+        AssertEqual(1, LegacySmartDriverPrintSemantics.FeedCardFailureContinueRawValue,
+            "FeedCard failure raw continue value");
         AssertSequence(new[] { "StartDoc", "StartPage", "EncodeChip", "EndPage", "EndDoc" },
             LegacySmartDriverPrintSemantics.ProvenScriptHooks,
             "smartDriver script hook names");
