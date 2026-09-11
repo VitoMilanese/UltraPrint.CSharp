@@ -201,8 +201,8 @@ internal static class CounterEditorCompatibilityTests
             var store = new LegacyCounterFileStore();
             var path = Path.Combine(directory, LegacyCounterFileStore.FileName);
             WriteRawLegacyFile(path,
-                new RawCounterRecord("  hELLo   ", digits: 5, zeroPaddingRaw: -1, unknownWord: 0x1234, currentValue: 77),
-                new RawCounterRecord("WORLD     ", digits: 4, zeroPaddingRaw: 0, unknownWord: 0, currentValue: 88));
+                new RawCounterRecord("  hELLo   ", Digits: 5, ZeroPaddingRaw: -1, UnknownWord: 0x1234, CurrentValue: 77),
+                new RawCounterRecord("WORLD     ", Digits: 4, ZeroPaddingRaw: 0, UnknownWord: 0, CurrentValue: 88));
             action(LegacyCounterEditorModel.Load(path, store), store, path);
         });
     }
